@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Allfeat ATS Register - Demo</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+    }
+
+    .demo-container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .demo-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .demo-title {
+      font-size: 28px;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin: 0 0 8px;
+    }
+
+    .demo-subtitle {
+      font-size: 16px;
+      color: #666;
+      margin: 0;
+    }
+
+    .config-panel {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .config-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0 0 16px;
+      color: #1a1a1a;
+    }
+
+    .config-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 600px) {
+      .config-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .config-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .config-field.full-width {
+      grid-column: 1 / -1;
+    }
+
+    .config-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: #333;
+    }
+
+    .config-input {
+      padding: 10px 12px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    .config-input:focus {
+      outline: none;
+      border-color: #4DB8A8;
+      box-shadow: 0 0 0 3px rgba(77, 184, 168, 0.15);
+    }
+
+    .config-hint {
+      font-size: 12px;
+      color: #999;
+    }
+
+    .config-buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn-primary {
+      background: #4DB8A8;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #3da89a;
+    }
+
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+
+    .component-wrapper {
+      margin-bottom: 24px;
+    }
+
+    .events-panel {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .events-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0 0 16px;
+      color: #1a1a1a;
+    }
+
+    .events-log {
+      background: #1a1a1a;
+      color: #4DB8A8;
+      border-radius: 8px;
+      padding: 16px;
+      font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .events-log:empty::before {
+      content: 'No events yet. Interact with the component above.';
+      color: #666;
+    }
+
+    .event-entry {
+      margin-bottom: 8px;
+      border-bottom: 1px solid #333;
+      padding-bottom: 8px;
+    }
+
+    .event-entry:last-child {
+      margin-bottom: 0;
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .event-name {
+      color: #f59e0b;
+      font-weight: 600;
+    }
+
+    .event-time {
+      color: #666;
+      font-size: 11px;
+    }
+
+    .event-data {
+      color: #9ca3af;
+      margin-top: 4px;
+      word-break: break-all;
+    }
+
+    .clear-btn {
+      font-size: 12px;
+      padding: 4px 8px;
+      float: right;
+      margin-top: -4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="demo-container">
+    <div class="demo-header">
+      <h1 class="demo-title">Allfeat ATS Register</h1>
+      <p class="demo-subtitle">Framework-agnostic web component for blockchain work registration</p>
+    </div>
+
+    <div class="config-panel">
+      <h2 class="config-title">Configuration</h2>
+      <div class="config-grid">
+        <div class="config-field full-width">
+          <label class="config-label" for="api-key">API Key *</label>
+          <input
+            type="text"
+            id="api-key"
+            class="config-input"
+            placeholder="aft_your_api_key_here"
+            value=""
+          />
+          <span class="config-hint">Format: aft_ followed by 64 hex characters</span>
+        </div>
+        <div class="config-field">
+          <label class="config-label" for="api-endpoint">API Endpoint</label>
+          <input
+            type="text"
+            id="api-endpoint"
+            class="config-input"
+            placeholder="https://api.allfeat.io"
+            value="https://api.allfeat.io"
+          />
+        </div>
+        <div class="config-field">
+          <label class="config-label" for="theme">Theme</label>
+          <select id="theme" class="config-input">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+      </div>
+      <div class="config-buttons">
+        <button class="btn btn-primary" onclick="applyConfig()">Apply Configuration</button>
+        <button class="btn btn-secondary" onclick="resetComponent()">Reset Component</button>
+      </div>
+    </div>
+
+    <div class="component-wrapper" id="component-container">
+      <allfeat-ats-register
+        id="ats-component"
+        api-key=""
+        api-endpoint="https://api.allfeat.io"
+        theme="light"
+      ></allfeat-ats-register>
+    </div>
+
+    <div class="events-panel">
+      <h2 class="events-title">
+        Event Log
+        <button class="btn btn-secondary clear-btn" onclick="clearEvents()">Clear</button>
+      </h2>
+      <div class="events-log" id="events-log"></div>
+    </div>
+  </div>
+
+  <!-- Load the component (in production, use the bundled version) -->
+  <script type="module">
+    // Import from source for development
+    // In production, use: <script src="dist/allfeat-ats-register.iife.js"></script>
+    import './dist/allfeat-ats-register.esm.js';
+  </script>
+
+  <script>
+    // Apply configuration to component
+    function applyConfig() {
+      const component = document.getElementById('ats-component');
+      const apiKey = document.getElementById('api-key').value;
+      const apiEndpoint = document.getElementById('api-endpoint').value;
+      const theme = document.getElementById('theme').value;
+
+      component.setAttribute('api-key', apiKey);
+      component.setAttribute('api-endpoint', apiEndpoint);
+      component.setAttribute('theme', theme);
+
+      logEvent('config-applied', { apiKey: apiKey ? '***' + apiKey.slice(-4) : '', apiEndpoint, theme });
+    }
+
+    // Reset the component
+    function resetComponent() {
+      const component = document.getElementById('ats-component');
+      if (component.reset) {
+        component.reset();
+        logEvent('component-reset', {});
+      }
+    }
+
+    // Clear event log
+    function clearEvents() {
+      document.getElementById('events-log').innerHTML = '';
+    }
+
+    // Log an event to the panel
+    function logEvent(name, data) {
+      const log = document.getElementById('events-log');
+      const time = new Date().toLocaleTimeString();
+
+      const entry = document.createElement('div');
+      entry.className = 'event-entry';
+      entry.innerHTML = `
+        <span class="event-name">${name}</span>
+        <span class="event-time">${time}</span>
+        <div class="event-data">${JSON.stringify(data, null, 2)}</div>
+      `;
+
+      log.insertBefore(entry, log.firstChild);
+    }
+
+    // Listen for component events
+    document.addEventListener('DOMContentLoaded', () => {
+      const component = document.getElementById('ats-component');
+
+      // ZKP computing progress
+      component.addEventListener('zkp-computing', (e) => {
+        logEvent('zkp-computing', e.detail);
+      });
+
+      // Blockchain submitting
+      component.addEventListener('blockchain-submitting', (e) => {
+        logEvent('blockchain-submitting', e.detail);
+      });
+
+      // Blockchain success
+      component.addEventListener('blockchain-success', (e) => {
+        logEvent('blockchain-success', e.detail);
+      });
+
+      // ZIP ready
+      component.addEventListener('zip-ready', (e) => {
+        logEvent('zip-ready', {
+          filename: e.detail.filename,
+          pdfGenerated: e.detail.pdfGenerated,
+          size: e.detail.blob.size + ' bytes'
+        });
+      });
+
+      // Error
+      component.addEventListener('ats-register-error', (e) => {
+        logEvent('ats-register-error', e.detail);
+      });
+
+      // Step change
+      component.addEventListener('step-change', (e) => {
+        logEvent('step-change', e.detail);
+      });
+
+      logEvent('component-ready', { message: 'Component loaded and ready' });
+    });
+  </script>
+</body>
+</html>

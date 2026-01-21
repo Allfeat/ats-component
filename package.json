@@ -1,0 +1,68 @@
+{
+  "name": "allfeat-ats-component",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Framework-agnostic web component for registering ATS works on Allfeat blockchain",
+  "main": "dist/allfeat-ats-register.cjs.js",
+  "module": "dist/allfeat-ats-register.esm.js",
+  "browser": "dist/allfeat-ats-register.iife.js",
+  "types": "dist/allfeat-ats-register.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/allfeat-ats-register.esm.js",
+      "require": "./dist/allfeat-ats-register.cjs.js",
+      "browser": "./dist/allfeat-ats-register.iife.js",
+      "types": "./dist/allfeat-ats-register.d.ts"
+    },
+    "./wasm/*": "./dist/wasm/*"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "build:watch": "rollup -c -w",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "allfeat",
+    "ats",
+    "blockchain",
+    "web-component",
+    "custom-element",
+    "zkp",
+    "zero-knowledge-proof",
+    "music",
+    "copyright",
+    "registration"
+  ],
+  "author": "Allfeat",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Allfeat/allfeat-ats-component"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "jspdf": "^3.0.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^26.0.1",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "@rollup/plugin-wasm": "^6.2.2",
+    "rollup": "^4.18.0",
+    "rollup-plugin-copy": "^3.5.0",
+    "tslib": "^2.6.3",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
