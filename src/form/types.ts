@@ -14,17 +14,33 @@ export interface CreatorFormData {
  */
 export interface WorkFormData {
   title: string;
-  iswc?: string;
   creators: CreatorFormData[];
+}
+
+/**
+ * Work type for protection flow
+ */
+export type WorkType = 'new' | 'version' | null;
+
+/**
+ * Parsed ATS certificate data (from existing certificate JSON)
+ */
+export interface ParsedAtsData {
+  title: string;
+  creators: CreatorFormData[];
+  atsId: number;
+  versionNumber: number;
 }
 
 /**
  * Complete form state
  */
 export interface FormState {
+  workType: WorkType;
   file: File | null;
+  atsFile: File | null;
+  parsedAtsData: ParsedAtsData | null;
   title: string;
-  iswc: string;
   creators: CreatorFormData[];
 }
 
@@ -32,9 +48,10 @@ export interface FormState {
  * Form validation errors
  */
 export interface FormErrors {
+  workType?: string;
   file?: string;
+  atsFile?: string;
   title?: string;
-  iswc?: string;
   creators?: {
     [index: number]: {
       fullName?: string;
@@ -53,12 +70,8 @@ export interface FormErrors {
 export const CREATOR_ROLES = [
   'Author',
   'Composer',
-  'Performer',
-  'Producer',
   'Arranger',
-  'Engineer',
-  'Lyricist',
-  'Publisher',
+  'Adapter',
 ] as const;
 
 export type CreatorRole = typeof CREATOR_ROLES[number];
@@ -81,9 +94,11 @@ export function createEmptyCreator(): CreatorFormData {
  */
 export function createDefaultFormState(): FormState {
   return {
+    workType: null,
     file: null,
+    atsFile: null,
+    parsedAtsData: null,
     title: '',
-    iswc: '',
     creators: [createEmptyCreator()],
   };
 }

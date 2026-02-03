@@ -42,6 +42,8 @@ export type {
   CreatorFormData,
   WorkFormData,
   FormErrors,
+  WorkType,
+  ParsedAtsData,
 } from './form/types';
 
 export {
@@ -54,7 +56,8 @@ export {
 export {
   validateForm,
   validateCreator,
-  isValidAudioFile,
+  isValidAtsFile,
+  parseAtsFile,
   creatorSchema,
   workFormSchema,
 } from './form/schema';

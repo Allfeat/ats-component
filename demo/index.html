@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Allfeat ATS Register - Demo</title>
-  <style>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Allfeat ATS Register - Demo</title>
+    <style>
     * {
       box-sizing: border-box;
     }
@@ -205,78 +205,78 @@
       margin-top: -4px;
     }
   </style>
-</head>
-<body>
-  <div class="demo-container">
-    <div class="demo-header">
-      <h1 class="demo-title">Allfeat ATS Register</h1>
-      <p class="demo-subtitle">Framework-agnostic web component for blockchain work registration</p>
-    </div>
+  </head>
+  <body>
+    <div class="demo-container">
+      <div class="demo-header">
+        <h1 class="demo-title">Allfeat ATS Register</h1>
+        <p class="demo-subtitle">Framework-agnostic web component for blockchain
+          work registration</p>
+      </div>
 
-    <div class="config-panel">
-      <h2 class="config-title">Configuration</h2>
-      <div class="config-grid">
-        <div class="config-field full-width">
-          <label class="config-label" for="api-key">API Key *</label>
-          <input
-            type="text"
-            id="api-key"
-            class="config-input"
-            placeholder="aft_your_api_key_here"
-            value=""
-          />
-          <span class="config-hint">Format: aft_ followed by 64 hex characters</span>
+      <div class="config-panel">
+        <h2 class="config-title">Configuration</h2>
+        <div class="config-grid">
+          <div class="config-field full-width">
+            <label class="config-label" for="api-key">API Key *</label>
+            <input
+              type="text"
+              id="api-key"
+              class="config-input"
+              placeholder="aft_your_api_key_here"
+              value />
+            <span class="config-hint">Format: aft_ followed by 64 hex
+              characters</span>
+          </div>
+          <div class="config-field">
+            <label class="config-label" for="api-endpoint">API Endpoint</label>
+            <input
+              type="text"
+              id="api-endpoint"
+              class="config-input"
+              placeholder="http://localhost:3010"
+              value="http://localhost:3010" />
+          </div>
+          <div class="config-field">
+            <label class="config-label" for="theme">Theme</label>
+            <select id="theme" class="config-input">
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
         </div>
-        <div class="config-field">
-          <label class="config-label" for="api-endpoint">API Endpoint</label>
-          <input
-            type="text"
-            id="api-endpoint"
-            class="config-input"
-            placeholder="https://api.allfeat.io"
-            value="https://api.allfeat.io"
-          />
-        </div>
-        <div class="config-field">
-          <label class="config-label" for="theme">Theme</label>
-          <select id="theme" class="config-input">
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
+        <div class="config-buttons">
+          <button class="btn btn-primary" onclick="applyConfig()">Apply
+            Configuration</button>
+          <button class="btn btn-secondary" onclick="resetComponent()">Reset
+            Component</button>
         </div>
       </div>
-      <div class="config-buttons">
-        <button class="btn btn-primary" onclick="applyConfig()">Apply Configuration</button>
-        <button class="btn btn-secondary" onclick="resetComponent()">Reset Component</button>
+
+      <div class="component-wrapper" id="component-container">
+        <allfeat-ats-register
+          id="ats-component"
+          api-endpoint="https://api.allfeat.io"
+          theme="light"></allfeat-ats-register>
+      </div>
+
+      <div class="events-panel">
+        <h2 class="events-title">
+          Event Log
+          <button class="btn btn-secondary clear-btn"
+            onclick="clearEvents()">Clear</button>
+        </h2>
+        <div class="events-log" id="events-log"></div>
       </div>
     </div>
 
-    <div class="component-wrapper" id="component-container">
-      <allfeat-ats-register
-        id="ats-component"
-        api-key=""
-        api-endpoint="https://api.allfeat.io"
-        theme="light"
-      ></allfeat-ats-register>
-    </div>
-
-    <div class="events-panel">
-      <h2 class="events-title">
-        Event Log
-        <button class="btn btn-secondary clear-btn" onclick="clearEvents()">Clear</button>
-      </h2>
-      <div class="events-log" id="events-log"></div>
-    </div>
-  </div>
-
-  <!-- Load the component (in production, use the bundled version) -->
-  <script type="module">
-    // Import from source for development
-    // In production, use: <script src="dist/allfeat-ats-register.iife.js"></script>
-    import './dist/allfeat-ats-register.esm.js';
+    <!-- Load the component -->
+    <!-- In production, use: <script src="dist/allfeat-ats-register.iife.js"></script> -->
+    <script type="module">
+    import '../dist/allfeat-ats-register.esm.js';
   </script>
 
-  <script>
+    <script>
     // Apply configuration to component
     function applyConfig() {
       const component = document.getElementById('ats-component');
@@ -362,5 +362,5 @@
       logEvent('component-ready', { message: 'Component loaded and ready' });
     });
   </script>
-</body>
+  </body>
 </html>

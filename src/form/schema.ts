@@ -6,16 +6,16 @@ import { z } from 'zod';
  */
 export const defaultErrorMessages = {
   // File errors
-  fileRequired: 'Please select an audio file',
-  fileInvalidType: 'Please select a valid audio file',
+  fileRequired: 'Please select an asset file',
+
+  // ATS file errors
+  atsFileRequired: 'Please upload your existing ATS certificate',
+  atsFileInvalidType: 'Please select a valid ATS certificate (.json)',
+  atsFileInvalidStructure: 'Invalid ATS certificate structure',
 
   // Title errors
   titleRequired: 'Title is required',
   titleMaxLength: 'Title must be 255 characters or less',
-
-  // ISWC errors
-  iswcFormat: 'Invalid ISWC format. Must be T followed by 9 digits and 1 check character (e.g., T0123456789)',
-  iswcMaxLength: 'ISWC must be 11 characters or less',
 
   // Creator errors
   fullNameRequired: 'Full name is required',
@@ -44,9 +44,6 @@ export type ErrorMessages = typeof defaultErrorMessages;
  * Create validation schemas with custom error messages
  */
 export function createValidationSchemas(messages: ErrorMessages = defaultErrorMessages) {
-  // ISWC validation - Format: T + 9 digits + 1 check digit/letter
-  const ISWC_REGEX = /^T\d{9}[0-9A-Z]$/;
-
   // IPI validation - 1-11 digits
   const IPI_REGEX = /^[0-9]{1,11}$/;
 
@@ -76,15 +73,6 @@ export function createValidationSchemas(messages: ErrorMessages = defaultErrorMe
     .string()
     .min(1, { message: messages.titleRequired })
     .max(255, { message: messages.titleMaxLength });
-
-  // ISWC validation (optional)
-  const iswcSchema = z
-    .string()
-    .max(11, { message: messages.iswcMaxLength })
-    .refine((val) => val === '' || ISWC_REGEX.test(val), {
-      message: messages.iswcFormat,
-    })
-    .optional();
 
   // Full name validation
   const fullNameSchema = z
@@ -119,7 +107,6 @@ export function createValidationSchemas(messages: ErrorMessages = defaultErrorMe
   // Work form schema
   const workFormSchema = z.object({
     title: titleSchema,
-    iswc: iswcSchema.default(''),
     creators: z
       .array(creatorSchema)
       .min(1, { message: messages.creatorsMin })
@@ -128,7 +115,6 @@ export function createValidationSchemas(messages: ErrorMessages = defaultErrorMe
 
   return {
     titleSchema,
-    iswcSchema,
     fullNameSchema,
     emailSchema,
     rolesSchema,
@@ -144,7 +130,6 @@ const schemas = createValidationSchemas();
 
 export const {
   titleSchema,
-  iswcSchema,
   fullNameSchema,
   emailSchema,
   rolesSchema,
@@ -181,29 +166,63 @@ export function validateCreator(data: unknown): { success: true; data: Creator }
 }
 
 /**
- * Check if a file is a valid audio file
+ * Check if a file is a valid ATS certificate JSON file
  */
-export function isValidAudioFile(file: File): boolean {
-  // Accept common audio MIME types
-  const validTypes = [
-    'audio/mpeg',
-    'audio/mp3',
-    'audio/wav',
-    'audio/wave',
-    'audio/x-wav',
-    'audio/ogg',
-    'audio/flac',
-    'audio/aac',
-    'audio/m4a',
-    'audio/x-m4a',
-    'audio/mp4',
-    'audio/aiff',
-    'audio/x-aiff',
-  ];
-
-  // Also check by extension for browsers that don't report MIME correctly
-  const validExtensions = ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.aiff', '.aif'];
+export function isValidAtsFile(file: File): boolean {
   const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+  return extension === '.json' || file.type === 'application/json';
+}
 
-  return validTypes.includes(file.type) || validExtensions.includes(extension);
+/**
+ * Parse and validate ATS certificate JSON structure
+ */
+export async function parseAtsFile(file: File): Promise<{
+  success: true;
+  data: {
+    title: string;
+    creators: Array<{ fullName: string; email: string; roles: string[]; ipi: string; isni: string }>;
+    atsId: number;
+    versionNumber: number;
+  };
+} | { success: false; error: string }> {
+  try {
+    const text = await file.text();
+    const json = JSON.parse(text);
+
+    // Validate required fields
+    if (!json.title || typeof json.title !== 'string') {
+      return { success: false, error: 'Missing or invalid title in ATS certificate' };
+    }
+
+    if (!json.atsId || typeof json.atsId !== 'number') {
+      return { success: false, error: 'Missing or invalid atsId in ATS certificate' };
+    }
+
+    // Creators are optional but should be validated if present
+    const creators = json.creators || [];
+    if (!Array.isArray(creators)) {
+      return { success: false, error: 'Invalid creators format in ATS certificate' };
+    }
+
+    // Map creators to expected format with required string fields
+    const mappedCreators = creators.map((c: Record<string, unknown>) => ({
+      fullName: String(c.fullName || ''),
+      email: String(c.email || ''),
+      roles: Array.isArray(c.roles) ? c.roles.map(String) : [],
+      ipi: String(c.ipi || ''),
+      isni: String(c.isni || ''),
+    }));
+
+    return {
+      success: true,
+      data: {
+        title: json.title,
+        creators: mappedCreators,
+        atsId: json.atsId,
+        versionNumber: (json.versionNumber || 1) + 1, // Increment version for new version
+      },
+    };
+  } catch {
+    return { success: false, error: 'Failed to parse ATS certificate file' };
+  }
 }

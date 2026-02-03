@@ -1,19 +1,79 @@
-import type { FormState, CreatorFormData } from './types';
+import type { FormState, CreatorFormData, WorkType } from './types';
 import { CREATOR_ROLES } from './types';
 
 /**
- * Form step definitions
+ * Lucide SVG icons (inline for zero dependencies)
+ * Icons from https://lucide.dev - MIT License
  */
-export const FORM_STEPS = [
+const LUCIDE_ICONS = {
+  // file-plus icon for "New Work"
+  filePlus: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15h6"/><path d="M12 18v-6"/></svg>`,
+  // refresh-cw icon for "New Version"
+  refreshCw: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>`,
+  // layers icon for Type step
+  layers: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>`,
+  // file icon for File step
+  file: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>`,
+  // type icon for Title step
+  type: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/></svg>`,
+  // users icon for Creators step
+  users: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  // check-circle icon for Review step
+  checkCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>`,
+} as const;
+
+/**
+ * Get stepper icon for a step ID
+ */
+function getStepIcon(stepId: string): string {
+  switch (stepId) {
+    case 'choice': return LUCIDE_ICONS.layers;
+    case 'file': return LUCIDE_ICONS.file;
+    case 'title': return LUCIDE_ICONS.type;
+    case 'creators': return LUCIDE_ICONS.users;
+    case 'review': return LUCIDE_ICONS.checkCircle;
+    default: return '';
+  }
+}
+
+/**
+ * Form step definitions for New Work flow
+ * choice -> file -> title -> creators -> review -> processing -> success
+ */
+export const FORM_STEPS_NEW_WORK = [
+  { id: 'choice', label: 'Type' },
   { id: 'file', label: 'File' },
-  { id: 'details', label: 'Details' },
+  { id: 'title', label: 'Title' },
   { id: 'creators', label: 'Creators' },
   { id: 'review', label: 'Review' },
   { id: 'processing', label: 'Process' },
   { id: 'success', label: 'Done' },
 ] as const;
 
-export type StepId = typeof FORM_STEPS[number]['id'];
+/**
+ * Form step definitions for New Version flow
+ * choice -> file (with ATS) -> creators -> review -> processing -> success
+ */
+export const FORM_STEPS_NEW_VERSION = [
+  { id: 'choice', label: 'Type' },
+  { id: 'file', label: 'File' },
+  { id: 'creators', label: 'Creators' },
+  { id: 'review', label: 'Review' },
+  { id: 'processing', label: 'Process' },
+  { id: 'success', label: 'Done' },
+] as const;
+
+/**
+ * Get form steps based on work type
+ */
+export function getFormSteps(workType: WorkType) {
+  return workType === 'version' ? FORM_STEPS_NEW_VERSION : FORM_STEPS_NEW_WORK;
+}
+
+// For backward compatibility, default to new work steps
+export const FORM_STEPS = FORM_STEPS_NEW_WORK;
+
+export type StepId = typeof FORM_STEPS_NEW_WORK[number]['id'] | typeof FORM_STEPS_NEW_VERSION[number]['id'];
 
 /**
  * Format file size for display
@@ -27,12 +87,16 @@ function formatFileSize(bytes: number): string {
 /**
  * Render the step indicator
  */
-export function renderStepIndicator(currentStep: number): string {
+export function renderStepIndicator(currentStep: number, workType: WorkType = null): string {
+  const steps = getFormSteps(workType);
+  // Show steps except 'processing' and 'success' (last 2)
+  const visibleSteps = steps.slice(0, -2);
+
   return `
     <div class="ats-steps">
-      ${FORM_STEPS.slice(0, -1).map((step, index) => `
+      ${visibleSteps.map((step, index) => `
         <div class="ats-step ${index < currentStep ? 'completed' : ''} ${index === currentStep ? 'active' : ''}">
-          <div class="ats-step-number">${index < currentStep ? '✓' : index + 1}</div>
+          <div class="ats-step-number">${index < currentStep ? '✓' : getStepIcon(step.id)}</div>
           <div class="ats-step-label">${step.label}</div>
         </div>
       `).join('')}
@@ -41,22 +105,57 @@ export function renderStepIndicator(currentStep: number): string {
 }
 
 /**
+ * Render protection choice step (New Work vs New Version)
+ */
+export function renderProtectionChoiceStep(workType: WorkType): string {
+  return `
+    <div class="ats-section-title">Choose Protection Type</div>
+    <div class="ats-choice-grid">
+      <div class="ats-choice-card ${workType === 'new' ? 'selected' : ''}" data-choice="new">
+        <div class="ats-choice-icon">${LUCIDE_ICONS.filePlus}</div>
+        <div class="ats-choice-title">New Work</div>
+        <div class="ats-choice-description">
+          Register a brand new creative work that hasn't been protected before.
+        </div>
+      </div>
+      <div class="ats-choice-card ${workType === 'version' ? 'selected' : ''}" data-choice="version">
+        <div class="ats-choice-icon">${LUCIDE_ICONS.refreshCw}</div>
+        <div class="ats-choice-title">New Version</div>
+        <div class="ats-choice-description">
+          Register a new version of an existing protected work using your ATS certificate.
+        </div>
+      </div>
+    </div>
+    <div class="ats-btn-group ats-btn-group-right">
+      <button type="button" class="ats-btn ats-btn-primary" id="next-btn" ${!workType ? 'disabled' : ''}>
+        Continue
+      </button>
+    </div>
+  `;
+}
+
+/**
  * Render file upload step
  */
-export function renderFileStep(state: FormState, error?: string): string {
+export function renderFileStep(state: FormState, errors: { file?: string; atsFile?: string } = {}): string {
   const hasFile = state.file !== null;
+  const hasAtsFile = state.atsFile !== null;
+  const isVersionFlow = state.workType === 'version';
+
+  // For version flow, require both files; for new work, only asset file
+  const canContinue = isVersionFlow ? (hasFile && hasAtsFile) : hasFile;
 
   return `
-    <div class="ats-section-title">Upload Audio File</div>
+    <div class="ats-section-title">Upload Asset File</div>
     <div class="ats-file-drop ${hasFile ? 'has-file' : ''}" id="file-drop-zone">
       <div class="ats-file-drop-icon">${hasFile ? '✓' : '📁'}</div>
       <div class="ats-file-drop-text">
-        ${hasFile ? 'File selected' : 'Drag and drop your audio file here'}
+        ${hasFile ? 'File selected' : 'Drag and drop your asset file here'}
       </div>
       <div class="ats-file-drop-hint">
-        ${hasFile ? 'Click to change file' : 'or click to browse (MP3, WAV, FLAC, etc.)'}
+        ${hasFile ? 'Click to change file' : 'or click to browse (any file type)'}
       </div>
-      <input type="file" id="file-input" accept="audio/*" class="ats-hidden" />
+      <input type="file" id="file-input" class="ats-hidden" />
     </div>
     ${hasFile && state.file ? `
       <div class="ats-file-info">
@@ -65,9 +164,38 @@ export function renderFileStep(state: FormState, error?: string): string {
         <button type="button" class="ats-btn ats-btn-sm ats-btn-secondary" id="remove-file">✕</button>
       </div>
     ` : ''}
-    ${error ? `<div class="ats-error-message">${error}</div>` : ''}
-    <div class="ats-btn-group ats-btn-group-right">
-      <button type="button" class="ats-btn ats-btn-primary" id="next-btn" ${!hasFile ? 'disabled' : ''}>
+    ${errors.file ? `<div class="ats-error-message">${errors.file}</div>` : ''}
+
+    ${isVersionFlow ? `
+      <div class="ats-section-title" style="margin-top: 24px;">Upload Existing ATS Certificate</div>
+      <div class="ats-file-drop ${hasAtsFile ? 'has-file' : ''}" id="ats-file-drop-zone">
+        <div class="ats-file-drop-icon">${hasAtsFile ? '✓' : '📋'}</div>
+        <div class="ats-file-drop-text">
+          ${hasAtsFile ? 'Certificate selected' : 'Drag and drop your ATS certificate here'}
+        </div>
+        <div class="ats-file-drop-hint">
+          ${hasAtsFile ? 'Click to change file' : 'or click to browse (.json file)'}
+        </div>
+        <input type="file" id="ats-file-input" accept=".json,application/json" class="ats-hidden" />
+      </div>
+      ${hasAtsFile && state.atsFile ? `
+        <div class="ats-file-info">
+          <div class="ats-file-name">${state.atsFile.name}</div>
+          <div class="ats-file-size">${formatFileSize(state.atsFile.size)}</div>
+          <button type="button" class="ats-btn ats-btn-sm ats-btn-secondary" id="remove-ats-file">✕</button>
+        </div>
+      ` : ''}
+      ${state.parsedAtsData ? `
+        <div class="ats-alert ats-alert-success" style="margin-top: 12px;">
+          <strong>Certificate loaded:</strong> "${escapeHtml(state.parsedAtsData.title)}" (v${state.parsedAtsData.versionNumber - 1})
+        </div>
+      ` : ''}
+      ${errors.atsFile ? `<div class="ats-error-message">${errors.atsFile}</div>` : ''}
+    ` : ''}
+
+    <div class="ats-btn-group ats-btn-group-between">
+      <button type="button" class="ats-btn ats-btn-secondary" id="back-btn">Back</button>
+      <button type="button" class="ats-btn ats-btn-primary" id="next-btn" ${!canContinue ? 'disabled' : ''}>
         Continue
       </button>
     </div>
@@ -75,13 +203,13 @@ export function renderFileStep(state: FormState, error?: string): string {
 }
 
 /**
- * Render work details step
+ * Render work title step (renamed from details, ISWC removed)
  */
-export function renderDetailsStep(state: FormState, errors: Record<string, string> = {}): string {
+export function renderTitleStep(state: FormState, errors: Record<string, string> = {}): string {
   return `
-    <div class="ats-section-title">Work Details</div>
+    <div class="ats-section-title">Title of the Work</div>
     <div class="ats-form-group">
-      <label class="ats-label ats-label-required" for="title">Title of the Work</label>
+      <label class="ats-label ats-label-required" for="title">Title</label>
       <input
         type="text"
         id="title"
@@ -90,20 +218,7 @@ export function renderDetailsStep(state: FormState, errors: Record<string, strin
         value="${escapeHtml(state.title)}"
         maxlength="255"
       />
-      ${errors.title ? `<div class="ats-error-message">${errors.title}</div>` : ''}
-    </div>
-    <div class="ats-form-group">
-      <label class="ats-label" for="iswc">ISWC (Optional)</label>
-      <input
-        type="text"
-        id="iswc"
-        class="ats-input ${errors.iswc ? 'error' : ''}"
-        placeholder="T0123456789"
-        value="${escapeHtml(state.iswc)}"
-        maxlength="11"
-      />
-      <div class="ats-help-text">International Standard Musical Work Code</div>
-      ${errors.iswc ? `<div class="ats-error-message">${errors.iswc}</div>` : ''}
+${errors.title ? `<div class="ats-error-message">${errors.title}</div>` : ''}
     </div>
     <div class="ats-btn-group ats-btn-group-between">
       <button type="button" class="ats-btn ats-btn-secondary" id="back-btn">Back</button>
@@ -111,6 +226,9 @@ export function renderDetailsStep(state: FormState, errors: Record<string, strin
     </div>
   `;
 }
+
+// Keep backward compatibility alias
+export const renderDetailsStep = renderTitleStep;
 
 /**
  * Render a single creator form
@@ -177,8 +295,10 @@ function renderCreatorForm(creator: CreatorFormData, index: number, errors: Reco
           placeholder="00123456789"
           value="${escapeHtml(creator.ipi)}"
           maxlength="11"
+          inputmode="numeric"
+          pattern="[0-9]*"
         />
-        <div class="ats-help-text">1-11 digits, numbers only</div>
+        <div class="ats-help-text">1-11 digits, numbers only (letters will be filtered)</div>
         ${errors.ipi ? `<div class="ats-error-message">${errors.ipi}</div>` : ''}
       </div>
 
@@ -192,7 +312,7 @@ function renderCreatorForm(creator: CreatorFormData, index: number, errors: Reco
           value="${escapeHtml(creator.isni)}"
           maxlength="16"
         />
-        <div class="ats-help-text">16 characters (15 digits + check digit/X)</div>
+        <div class="ats-help-text">16 characters: 15 digits + check digit (0-9 or X)</div>
         ${errors.isni ? `<div class="ats-error-message">${errors.isni}</div>` : ''}
       </div>
     </div>
@@ -224,23 +344,33 @@ export function renderCreatorsStep(state: FormState, errors: Record<string, Reco
  * Render review step
  */
 export function renderReviewStep(state: FormState): string {
+  const isVersionFlow = state.workType === 'version';
+  const versionInfo = state.parsedAtsData
+    ? ` (Version ${state.parsedAtsData.versionNumber})`
+    : '';
+
   return `
     <div class="ats-section-title">Review Your Submission</div>
     <div class="ats-summary">
+      ${isVersionFlow && state.parsedAtsData ? `
+        <div class="ats-summary-section">
+          <div class="ats-summary-label">Registration Type</div>
+          <div class="ats-summary-value">New Version of existing work (ATS ID: ${state.parsedAtsData.atsId})</div>
+        </div>
+      ` : `
+        <div class="ats-summary-section">
+          <div class="ats-summary-label">Registration Type</div>
+          <div class="ats-summary-value">New Work</div>
+        </div>
+      `}
       <div class="ats-summary-section">
-        <div class="ats-summary-label">File</div>
+        <div class="ats-summary-label">Asset File</div>
         <div class="ats-summary-value">${state.file?.name || 'No file selected'}</div>
       </div>
       <div class="ats-summary-section">
-        <div class="ats-summary-label">Title</div>
+        <div class="ats-summary-label">Title${versionInfo}</div>
         <div class="ats-summary-value">${escapeHtml(state.title)}</div>
       </div>
-      ${state.iswc ? `
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">ISWC</div>
-          <div class="ats-summary-value">${escapeHtml(state.iswc)}</div>
-        </div>
-      ` : ''}
       <div class="ats-summary-section">
         <div class="ats-summary-label">Creators (${state.creators.length})</div>
         ${state.creators.map((creator, index) => `

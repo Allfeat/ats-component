@@ -2,18 +2,19 @@ import { initWasm, buildBundle, prove, verify } from './wasm/loader';
 import type { ZkpBundle, ZkpCreator } from './wasm/types';
 import { submitAts, DEFAULT_API_ENDPOINT, isValidApiKeyFormat } from './api/client';
 import { AtsApiException } from './api/types';
-import { FormState, createDefaultFormState, createEmptyCreator } from './form/types';
-import { isValidAudioFile, creatorSchema } from './form/schema';
+import { FormState, createDefaultFormState, createEmptyCreator, WorkType } from './form/types';
+import { creatorSchema, isValidAtsFile, parseAtsFile } from './form/schema';
 import {
   renderStepIndicator,
+  renderProtectionChoiceStep,
   renderFileStep,
-  renderDetailsStep,
+  renderTitleStep,
   renderCreatorsStep,
   renderReviewStep,
   renderProcessingStep,
   renderSuccessStep,
   renderErrorState,
-  FORM_STEPS,
+  getFormSteps,
 } from './form/renderer';
 import {
   dispatchZkpComputing,
@@ -147,6 +148,7 @@ export class AllfeatAtsRegister extends HTMLElement {
         if (newValue && !isValidApiKeyFormat(newValue)) {
           console.warn('Invalid API key format. Expected: aft_<64-hex-chars>');
         }
+        this.render();
         break;
     }
   }
@@ -211,7 +213,9 @@ export class AllfeatAtsRegister extends HTMLElement {
    * Trigger form submission programmatically
    */
   async submit(): Promise<void> {
-    if (this.state.currentStep === 3) {
+    const steps = getFormSteps(this.state.formState.workType);
+    const reviewIndex = steps.findIndex(s => s.id === 'review');
+    if (this.state.currentStep === reviewIndex) {
       await this.handleSubmit();
     }
   }
@@ -235,48 +239,59 @@ export class AllfeatAtsRegister extends HTMLElement {
       return;
     }
 
+    // Get the appropriate steps for the current work type
+    const steps = getFormSteps(this.state.formState.workType);
+    const stepId = steps[this.state.currentStep]?.id;
+
     // Render based on current step
     let content = '';
 
-    // Show step indicator for steps 0-3
-    if (this.state.currentStep < 4 && !this.state.error) {
-      content += renderStepIndicator(this.state.currentStep);
+    // Show step indicator for non-processing/success steps
+    const processingIndex = steps.findIndex(s => s.id === 'processing');
+    if (this.state.currentStep < processingIndex && !this.state.error) {
+      content += renderStepIndicator(this.state.currentStep, this.state.formState.workType);
     }
 
     // Handle error state
     if (this.state.error) {
       content += renderErrorState(this.state.error, this.state.errorStage);
     } else {
-      switch (this.state.currentStep) {
-        case 0:
+      switch (stepId) {
+        case 'choice':
+          content += renderProtectionChoiceStep(this.state.formState.workType);
+          break;
+        case 'file':
           content += renderFileStep(
             this.state.formState,
-            this.state.formErrors.file as string
+            {
+              file: this.state.formErrors.file as string,
+              atsFile: this.state.formErrors.atsFile as string,
+            }
           );
           break;
-        case 1:
-          content += renderDetailsStep(
+        case 'title':
+          content += renderTitleStep(
             this.state.formState,
             this.state.formErrors as Record<string, string>
           );
           break;
-        case 2:
+        case 'creators':
           content += renderCreatorsStep(
             this.state.formState,
             this.state.formErrors.creators as Record<string, Record<string, string>>
           );
           break;
-        case 3:
+        case 'review':
           content += renderReviewStep(this.state.formState);
           break;
-        case 4:
+        case 'processing':
           content += renderProcessingStep(
             this.state.processingStage,
             this.state.processingProgress,
             this.state.processingMessage
           );
           break;
-        case 5:
+        case 'success':
           if (this.state.apiResponse) {
             content += renderSuccessStep(
               this.state.apiResponse.atsId,
@@ -309,7 +324,19 @@ export class AllfeatAtsRegister extends HTMLElement {
     container.querySelector('#download-btn')?.addEventListener('click', () => this.handleDownload());
     container.querySelector('#reset-btn')?.addEventListener('click', () => this.reset());
 
-    // File upload
+    // Protection choice cards
+    container.querySelectorAll('.ats-choice-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        const choice = (card as HTMLElement).dataset.choice as WorkType;
+        this.state.formState.workType = choice;
+        // Clear any previous data when changing choice
+        this.state.formState.atsFile = null;
+        this.state.formState.parsedAtsData = null;
+        this.render();
+      });
+    });
+
+    // Asset file upload
     const fileDropZone = container.querySelector('#file-drop-zone');
     const fileInput = container.querySelector('#file-input') as HTMLInputElement;
 
@@ -343,12 +370,44 @@ export class AllfeatAtsRegister extends HTMLElement {
       this.render();
     });
 
+    // ATS certificate file upload (for version flow)
+    const atsFileDropZone = container.querySelector('#ats-file-drop-zone');
+    const atsFileInput = container.querySelector('#ats-file-input') as HTMLInputElement;
+
+    if (atsFileDropZone && atsFileInput) {
+      atsFileDropZone.addEventListener('click', () => atsFileInput.click());
+      atsFileDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        atsFileDropZone.classList.add('dragover');
+      });
+      atsFileDropZone.addEventListener('dragleave', () => {
+        atsFileDropZone.classList.remove('dragover');
+      });
+      atsFileDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        atsFileDropZone.classList.remove('dragover');
+        const files = (e as DragEvent).dataTransfer?.files;
+        if (files && files.length > 0) {
+          this.handleAtsFileSelect(files[0]);
+        }
+      });
+      atsFileInput.addEventListener('change', () => {
+        if (atsFileInput.files && atsFileInput.files.length > 0) {
+          this.handleAtsFileSelect(atsFileInput.files[0]);
+        }
+      });
+    }
+
+    container.querySelector('#remove-ats-file')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.state.formState.atsFile = null;
+      this.state.formState.parsedAtsData = null;
+      this.render();
+    });
+
     // Text inputs
     container.querySelector('#title')?.addEventListener('input', (e) => {
       this.state.formState.title = (e.target as HTMLInputElement).value;
-    });
-    container.querySelector('#iswc')?.addEventListener('input', (e) => {
-      this.state.formState.iswc = (e.target as HTMLInputElement).value;
     });
 
     // Creator inputs
@@ -366,17 +425,27 @@ export class AllfeatAtsRegister extends HTMLElement {
       });
     });
 
+    // IPI inputs with real-time filtering (digits only, max 11)
     container.querySelectorAll('.creator-ipi').forEach((input) => {
       input.addEventListener('input', (e) => {
-        const idx = parseInt((e.target as HTMLInputElement).dataset.index || '0');
-        this.state.formState.creators[idx].ipi = (e.target as HTMLInputElement).value;
+        const target = e.target as HTMLInputElement;
+        const idx = parseInt(target.dataset.index || '0');
+        // Filter to digits only, max 11 characters
+        const filtered = target.value.replace(/\D/g, '').slice(0, 11);
+        target.value = filtered;
+        this.state.formState.creators[idx].ipi = filtered;
       });
     });
 
+    // ISNI inputs with real-time filtering (digits and X only, max 16, auto-uppercase)
     container.querySelectorAll('.creator-isni').forEach((input) => {
       input.addEventListener('input', (e) => {
-        const idx = parseInt((e.target as HTMLInputElement).dataset.index || '0');
-        this.state.formState.creators[idx].isni = (e.target as HTMLInputElement).value;
+        const target = e.target as HTMLInputElement;
+        const idx = parseInt(target.dataset.index || '0');
+        // Filter to digits and X only, max 16 characters, uppercase
+        const filtered = target.value.replace(/[^0-9xX]/g, '').slice(0, 16).toUpperCase();
+        target.value = filtered;
+        this.state.formState.creators[idx].isni = filtered;
       });
     });
 
@@ -427,13 +496,47 @@ export class AllfeatAtsRegister extends HTMLElement {
   // ============================================
 
   private handleFileSelect(file: File): void {
-    if (!isValidAudioFile(file)) {
-      this.state.formErrors = { file: 'Please select a valid audio file' };
+    // Accept any file type (no validation needed)
+    this.state.formState.file = file;
+    this.state.formErrors = {};
+    this.render();
+  }
+
+  private async handleAtsFileSelect(file: File): Promise<void> {
+    // Validate it's a JSON file
+    if (!isValidAtsFile(file)) {
+      this.state.formErrors = { ...this.state.formErrors, atsFile: 'Please select a valid ATS certificate (.json)' };
       this.render();
       return;
     }
 
-    this.state.formState.file = file;
+    // Parse the ATS certificate
+    const result = await parseAtsFile(file);
+
+    if (!result.success) {
+      this.state.formErrors = { ...this.state.formErrors, atsFile: result.error };
+      this.render();
+      return;
+    }
+
+    // Store the file and parsed data
+    this.state.formState.atsFile = file;
+    this.state.formState.parsedAtsData = result.data;
+
+    // Pre-fill title from ATS certificate
+    this.state.formState.title = result.data.title;
+
+    // Pre-fill creators from ATS certificate (if any)
+    if (result.data.creators.length > 0) {
+      this.state.formState.creators = result.data.creators.map(c => ({
+        fullName: c.fullName,
+        email: c.email,
+        roles: c.roles,
+        ipi: c.ipi || '',
+        isni: c.isni || '',
+      }));
+    }
+
     this.state.formErrors = {};
     this.render();
   }
@@ -448,19 +551,23 @@ export class AllfeatAtsRegister extends HTMLElement {
     this.state.formErrors = {};
     this.render();
 
+    const steps = getFormSteps(this.state.formState.workType);
     dispatchStepChange(this, {
       step: this.state.currentStep,
-      stepName: FORM_STEPS[this.state.currentStep]?.id || 'unknown',
-      totalSteps: FORM_STEPS.length,
+      stepName: steps[this.state.currentStep]?.id || 'unknown',
+      totalSteps: steps.length,
     });
   }
 
   private handleBack(): void {
+    const steps = getFormSteps(this.state.formState.workType);
+    const reviewIndex = steps.findIndex(s => s.id === 'review');
+
     if (this.state.error) {
       this.state.error = null;
       this.state.errorStage = undefined;
-      if (this.state.currentStep > 3) {
-        this.state.currentStep = 3;
+      if (this.state.currentStep > reviewIndex) {
+        this.state.currentStep = reviewIndex;
       }
     } else if (this.state.currentStep > 0) {
       this.state.currentStep--;
@@ -470,25 +577,40 @@ export class AllfeatAtsRegister extends HTMLElement {
 
   private validateCurrentStep(): boolean {
     const { formState } = this.state;
+    const steps = getFormSteps(formState.workType);
+    const currentStepId = steps[this.state.currentStep]?.id;
 
-    switch (this.state.currentStep) {
-      case 0: // File step
-        if (!formState.file) {
-          this.state.formErrors = { file: 'Please select an audio file' };
+    switch (currentStepId) {
+      case 'choice': // Protection choice step
+        if (!formState.workType) {
+          this.state.formErrors = { workType: 'Please select a protection type' };
           this.render();
           return false;
         }
         break;
 
-      case 1: // Details step
+      case 'file': // File step
+        if (!formState.file) {
+          this.state.formErrors = { file: 'Please select an asset file' };
+          this.render();
+          return false;
+        }
+        // For version flow, also require ATS file
+        if (formState.workType === 'version') {
+          if (!formState.atsFile || !formState.parsedAtsData) {
+            this.state.formErrors = { ...this.state.formErrors, atsFile: 'Please upload your existing ATS certificate' };
+            this.render();
+            return false;
+          }
+        }
+        break;
+
+      case 'title': // Title step
         const errors: Record<string, string> = {};
         if (!formState.title.trim()) {
           errors.title = 'Title is required';
         } else if (formState.title.length > 255) {
           errors.title = 'Title must be 255 characters or less';
-        }
-        if (formState.iswc && !/^T\d{9}[0-9A-Z]$/.test(formState.iswc)) {
-          errors.iswc = 'Invalid ISWC format';
         }
         if (Object.keys(errors).length > 0) {
           this.state.formErrors = errors;
@@ -497,7 +619,7 @@ export class AllfeatAtsRegister extends HTMLElement {
         }
         break;
 
-      case 2: // Creators step
+      case 'creators': // Creators step
         const creatorErrors: Record<number, Record<string, string>> = {};
         let hasErrors = false;
 
@@ -533,9 +655,11 @@ export class AllfeatAtsRegister extends HTMLElement {
     }
 
     const { formState } = this.state;
+    const steps = getFormSteps(formState.workType);
 
     // Move to processing step
-    this.state.currentStep = 4;
+    const processingIndex = steps.findIndex(s => s.id === 'processing');
+    this.state.currentStep = processingIndex;
     this.state.processingStage = 'bundle';
     this.state.processingProgress = 0;
     this.render();
@@ -629,7 +753,8 @@ export class AllfeatAtsRegister extends HTMLElement {
       });
 
       // Move to success step
-      this.state.currentStep = 5;
+      const successIndex = steps.findIndex(s => s.id === 'success');
+      this.state.currentStep = successIndex;
       this.state.processingProgress = 100;
       this.render();
 
