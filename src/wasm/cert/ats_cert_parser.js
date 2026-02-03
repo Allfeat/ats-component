@@ -1,5 +1,77 @@
-import * as wasm from './ats_cert_parser_bg.wasm';
-export * from './ats_cert_parser_bg.js';
+/**
+ * WASM wrapper for Certificate parser module with async initialization
+ *
+ * This module handles manual WASM instantiation with proper imports.
+ * The @rollup/plugin-wasm is incompatible with wasm-bindgen because it
+ * instantiates WASM with empty imports, but wasm-bindgen modules require
+ * JavaScript glue functions (__wbg_*, __wbindgen_*) at instantiation time.
+ */
+import * as bg from './ats_cert_parser_bg.js';
 import { __wbg_set_wasm } from './ats_cert_parser_bg.js';
-__wbg_set_wasm(wasm);
-wasm.__wbindgen_start();
+
+let initialized = false;
+
+/**
+ * Initialize the Certificate parser WASM module
+ * @param {string} wasmUrl - URL to the .wasm file
+ */
+export async function initCertWasm(wasmUrl) {
+  if (initialized) return;
+
+  // Collect all __wbg and __wbindgen imports from bg.js
+  // These are the JavaScript functions that the WASM module calls
+  const imports = {};
+  for (const key of Object.keys(bg)) {
+    if (key.startsWith('__wbg') || key.startsWith('__wbindgen')) {
+      imports[key] = bg[key];
+    }
+  }
+
+  // The wasm-bindgen import module name
+  const importObject = {
+    './ats_cert_parser_bg.js': imports,
+  };
+
+  // Fetch and instantiate the WASM module
+  const response = await fetch(wasmUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch WASM: ${response.status} ${response.statusText}`);
+  }
+  const bytes = await response.arrayBuffer();
+  const { instance } = await WebAssembly.instantiate(bytes, importObject);
+
+  // Set the wasm instance in bg.js so its exported functions can use it
+  __wbg_set_wasm(instance.exports);
+
+  // Call the initialization function if present
+  if (typeof instance.exports.__wbindgen_start === 'function') {
+    instance.exports.__wbindgen_start();
+  }
+
+  // Initialize the externref table if present (required by some wasm-bindgen versions)
+  if (typeof bg.__wbindgen_init_externref_table === 'function') {
+    bg.__wbindgen_init_externref_table();
+  }
+
+  initialized = true;
+}
+
+/**
+ * Check if the WASM module is initialized
+ */
+export function isInitialized() {
+  return initialized;
+}
+
+// Re-export the actual functions from bg.js
+// These will work after initCertWasm() has been called
+export {
+  createAtsCertificateFromJsObject,
+  parseAtsCertificateToJs,
+  parseAtsCertificate,
+  parseAtsCertificateFromFile,
+  generateAtsCertificateJson,
+  generateAtsCertificateFromData,
+  AtsCertificate,
+  Creator,
+} from './ats_cert_parser_bg.js';

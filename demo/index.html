@@ -273,7 +273,12 @@
     <!-- Load the component -->
     <!-- In production, use: <script src="dist/allfeat-ats-register.iife.js"></script> -->
     <script type="module">
-    import '../dist/allfeat-ats-register.esm.js';
+    // Import and configure WASM base URL before the component initializes
+    import { setWasmBaseUrl } from '../dist/allfeat-ats-register.esm.js';
+
+    // Configure WASM files location relative to this HTML file
+    // In production, adjust this to match where your WASM files are hosted
+    setWasmBaseUrl('../dist/wasm/');
   </script>
 
     <script>

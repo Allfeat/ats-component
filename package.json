@@ -25,7 +25,8 @@
     "build:watch": "rollup -c -w",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run clean && npm run build"
+    "prepublishOnly": "npm run clean && npm run build",
+    "serve": "npx serve -l 3000"
   },
   "keywords": [
     "allfeat",

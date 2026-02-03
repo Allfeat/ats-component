@@ -3,7 +3,7 @@ import commonjs from '@rollup/plugin-commonjs';
 import typescript from '@rollup/plugin-typescript';
 import terser from '@rollup/plugin-terser';
 import json from '@rollup/plugin-json';
-import wasm from '@rollup/plugin-wasm';
+// import wasm from '@rollup/plugin-wasm'; // Disabled - incompatible with wasm-bindgen
 import copy from 'rollup-plugin-copy';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
@@ -61,10 +61,14 @@ export default {
     }),
     commonjs(),
     json(),
-    wasm({
-      targetEnv: 'browser',
-      sync: ['**/*.wasm'],
-    }),
+    // Note: @rollup/plugin-wasm is disabled because it's incompatible with wasm-bindgen modules.
+    // wasm-bindgen requires JavaScript import functions (__wbg_*) at instantiation time,
+    // but @rollup/plugin-wasm instantiates with empty imports.
+    // WASM files are loaded via fetch() and WebAssembly.instantiate() in the wrapper files.
+    // wasm({
+    //   targetEnv: 'browser',
+    //   sync: ['**/*.wasm'],
+    // }),
     typescript({
       tsconfig: './tsconfig.json',
       declaration: true,

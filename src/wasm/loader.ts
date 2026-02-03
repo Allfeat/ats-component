@@ -13,27 +13,43 @@ let certModule: CertWasmModule | null = null;
 let isInitialized = false;
 let initPromise: Promise<void> | null = null;
 
+// WASM URL configuration
+let wasmBaseUrl = './wasm/';
+
 /**
- * Dynamically load ZKP WASM module
+ * Configure the base URL for WASM files
+ * Call this before initWasm() if your WASM files are not in the default location
+ *
+ * @param baseUrl - Base URL path where WASM files are located (should end with /)
+ *
+ * @example
+ * // For files served from /assets/wasm/
+ * setWasmBaseUrl('/assets/wasm/');
+ *
+ * // For files served from a CDN
+ * setWasmBaseUrl('https://cdn.example.com/wasm/');
  */
-async function loadZkpModule(): Promise<ZkpWasmModule> {
-  // Dynamic import of the WASM module
-  const zkp = await import('./zkp/allfeat_ats_zkp_wasm');
-  return zkp as unknown as ZkpWasmModule;
+export function setWasmBaseUrl(baseUrl: string): void {
+  wasmBaseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
 }
 
 /**
- * Dynamically load Certificate parser WASM module
+ * Get the full URL for a WASM file
  */
-async function loadCertModule(): Promise<CertWasmModule> {
-  // Dynamic import of the WASM module
-  const cert = await import('./cert/ats_cert_parser');
-  return cert as unknown as CertWasmModule;
+function getWasmUrl(filename: string): string {
+  return `${wasmBaseUrl}${filename}`;
 }
 
 /**
  * Initialize both WASM modules
  * This should be called once before using any WASM functions
+ *
+ * The WASM files must be accessible at the configured base URL:
+ * - {baseUrl}/allfeat_ats_zkp_wasm_bg.wasm
+ * - {baseUrl}/ats_cert_parser_bg.wasm
+ *
+ * By default, files are expected at ./wasm/ relative to the page.
+ * Use setWasmBaseUrl() to change this before calling initWasm().
  */
 export async function initWasm(): Promise<void> {
   if (isInitialized) {
@@ -46,14 +62,20 @@ export async function initWasm(): Promise<void> {
 
   initPromise = (async () => {
     try {
-      // Load both modules in parallel
-      const [zkp, cert] = await Promise.all([
-        loadZkpModule(),
-        loadCertModule(),
+      // Import the wrapper modules
+      const [zkpMod, certMod] = await Promise.all([
+        import('./zkp/allfeat_ats_zkp_wasm.js'),
+        import('./cert/ats_cert_parser.js'),
       ]);
 
-      zkpModule = zkp;
-      certModule = cert;
+      // Initialize both WASM modules with their respective URLs
+      await Promise.all([
+        zkpMod.initZkpWasm(getWasmUrl('allfeat_ats_zkp_wasm_bg.wasm')),
+        certMod.initCertWasm(getWasmUrl('ats_cert_parser_bg.wasm')),
+      ]);
+
+      zkpModule = zkpMod as unknown as ZkpWasmModule;
+      certModule = certMod as unknown as CertWasmModule;
       isInitialized = true;
     } catch (error) {
       initPromise = null;

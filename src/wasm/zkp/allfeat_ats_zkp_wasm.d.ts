@@ -1,6 +1,15 @@
 /* tslint:disable */
 /* eslint-disable */
 /**
+ * Initialize the ZKP WASM module
+ * @param wasmUrl - URL to the .wasm file
+ */
+export function initZkpWasm(wasmUrl: string): Promise<void>;
+/**
+ * Check if the WASM module is initialized
+ */
+export function isInitialized(): boolean;
+/**
  * Build a full precomputed bundle (random secret):
  * - inputs: `title`, `audio_bytes` (Uint8Array), `creators` (array of JsCreator), `timestamp` (seconds)
  * - returns: all hashes + commitment + nullifier as hex, plus the numeric timestamp

@@ -1,5 +1,14 @@
 /* tslint:disable */
 /* eslint-disable */
+/**
+ * Initialize the Certificate parser WASM module
+ * @param wasmUrl - URL to the .wasm file
+ */
+export function initCertWasm(wasmUrl: string): Promise<void>;
+/**
+ * Check if the WASM module is initialized
+ */
+export function isInitialized(): boolean;
 export function parseAtsCertificate(json_str: string): AtsCertificate;
 export function parseAtsCertificateToJs(json_str: string): any;
 export function parseAtsCertificateFromFile(file_content: string): any;

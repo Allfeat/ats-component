@@ -100,6 +100,7 @@ export type {
 export {
   initWasm,
   isWasmInitialized,
+  setWasmBaseUrl,
   buildBundle,
   prove,
   verify,
