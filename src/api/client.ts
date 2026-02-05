@@ -3,12 +3,14 @@ import {
   AtsSubmitResponse,
   AtsApiException,
   ApiErrorCode,
+  ProxySubmitRequest,
+  ProxySubmitResponse,
 } from './types';
 
 /**
  * Default production API endpoint
  */
-export const DEFAULT_API_ENDPOINT = 'https://api.allfeat.io';
+export const DEFAULT_API_ENDPOINT = 'https://api.web2.dev.allfeat.org';
 
 /**
  * API key format regex: aft_ prefix followed by 64 hex characters
@@ -106,7 +108,7 @@ export async function submitAts(
 
   // Normalize endpoint (remove trailing slash)
   const normalizedEndpoint = endpoint.replace(/\/+$/, '');
-  const url = `${normalizedEndpoint}/v1/ats/submit`;
+  const url = `${normalizedEndpoint}/ats`;
 
   // Prepare request body
   const body: AtsSubmitRequest = {
@@ -163,6 +165,92 @@ export async function submitAts(
     throw new AtsApiException(
       error instanceof Error ? error.message : 'Unknown error occurred',
       ApiErrorCode.UNKNOWN_ERROR,
+      undefined,
+      error
+    );
+  }
+}
+
+/**
+ * Submit ATS registration via organization's proxy endpoint
+ *
+ * This is the secure mode where the component sends only the hash commitment
+ * to the organization's proxy, which then adds credentials and forwards to Allfeat API.
+ *
+ * @param proxyEndpoint - The organization's proxy URL
+ * @param hashCommitment - The ZKP commitment hash (32-byte hex string)
+ * @returns The submission response with ATS ID, transaction hash, and block number
+ * @throws AtsApiException on any error
+ */
+export async function submitViaProxy(
+  proxyEndpoint: string,
+  hashCommitment: string
+): Promise<ProxySubmitResponse> {
+  // Validate hash commitment format
+  if (!isValidHashCommitment(hashCommitment)) {
+    throw new AtsApiException(
+      'Invalid hash commitment format. Expected 32-byte hex string',
+      ApiErrorCode.INVALID_HASH_COMMITMENT
+    );
+  }
+
+  // Normalize endpoint (remove trailing slash)
+  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, '');
+
+  // Prepare request body - only hash_commitment, no credentials
+  const body: ProxySubmitRequest = {
+    hash_commitment: hashCommitment,
+  };
+
+  try {
+    const response = await fetch(normalizedEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    // Handle non-OK responses
+    if (!response.ok) {
+      let errorMessage: string;
+      try {
+        const errorBody = await response.json();
+        errorMessage = errorBody.error || errorBody.message || 'Proxy request failed';
+      } catch {
+        errorMessage = await response.text() || `HTTP ${response.status}`;
+      }
+
+      throw new AtsApiException(
+        errorMessage,
+        ApiErrorCode.PROXY_ERROR,
+        response.status
+      );
+    }
+
+    // Parse successful response
+    const data = await response.json() as ProxySubmitResponse;
+    return data;
+  } catch (error) {
+    // Re-throw AtsApiException as-is
+    if (error instanceof AtsApiException) {
+      throw error;
+    }
+
+    // Handle network errors
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new AtsApiException(
+        'Network error: Unable to connect to proxy server',
+        ApiErrorCode.NETWORK_ERROR,
+        undefined,
+        error
+      );
+    }
+
+    // Handle other errors
+    throw new AtsApiException(
+      error instanceof Error ? error.message : 'Unknown error occurred',
+      ApiErrorCode.PROXY_ERROR,
       undefined,
       error
     );

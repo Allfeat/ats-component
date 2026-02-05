@@ -1,8 +1,27 @@
 /**
- * Request payload for ATS submission
+ * Request payload for ATS submission (direct mode)
  */
 export interface AtsSubmitRequest {
   hash_commitment: string; // 32-byte hex (with or without 0x prefix)
+}
+
+/**
+ * Request payload sent from component to organization's proxy
+ * The proxy is responsible for adding credentials before forwarding to Allfeat API
+ */
+export interface ProxySubmitRequest {
+  hash_commitment: string; // 32-byte hex (with or without 0x prefix)
+}
+
+/**
+ * Response from organization's proxy (mirrors Allfeat API response)
+ */
+export interface ProxySubmitResponse {
+  status: string;
+  ats_id: number;
+  tx_hash: string;
+  block_number: number;
+  message?: string;
 }
 
 /**
@@ -36,6 +55,7 @@ export enum ApiErrorCode {
   WALLET_NOT_CONFIGURED = 'WALLET_NOT_CONFIGURED',
   TRANSACTION_FAILED = 'TRANSACTION_FAILED',
   NETWORK_ERROR = 'NETWORK_ERROR',
+  PROXY_ERROR = 'PROXY_ERROR',
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 

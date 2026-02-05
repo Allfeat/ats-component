@@ -1,6 +1,6 @@
 import { initWasm, buildBundle, prove, verify } from './wasm/loader';
 import type { ZkpBundle, ZkpCreator } from './wasm/types';
-import { submitAts, DEFAULT_API_ENDPOINT, isValidApiKeyFormat } from './api/client';
+import { submitAts, submitViaProxy, DEFAULT_API_ENDPOINT, isValidApiKeyFormat } from './api/client';
 import { AtsApiException } from './api/types';
 import { FormState, createDefaultFormState, createEmptyCreator, WorkType } from './form/types';
 import { creatorSchema, isValidAtsFile, parseAtsFile } from './form/schema';
@@ -61,9 +61,22 @@ interface ComponentState {
 }
 
 /**
+ * Default proxy endpoint for testing
+ */
+const DEFAULT_PROXY_ENDPOINT = 'https://ats-webcomponent-test.jad-chahed.workers.dev';
+
+/**
  * Allfeat ATS Register Custom Element
  *
- * Usage:
+ * Usage (Proxy Mode - Recommended for B2B):
+ * ```html
+ * <allfeat-ats-register
+ *   proxy-endpoint="https://your-org.workers.dev/ats-proxy"
+ *   theme="light"
+ * ></allfeat-ats-register>
+ * ```
+ *
+ * Usage (Direct Mode - Legacy):
  * ```html
  * <allfeat-ats-register
  *   api-key="aft_..."
@@ -71,9 +84,12 @@ interface ComponentState {
  *   theme="light"
  * ></allfeat-ats-register>
  * ```
+ *
+ * Proxy mode is recommended for B2B integrations as it keeps
+ * API credentials secure on the server side.
  */
 export class AllfeatAtsRegister extends HTMLElement {
-  static observedAttributes = ['api-key', 'wasm-path', 'api-endpoint', 'theme', 'lang'];
+  static observedAttributes = ['api-key', 'wasm-path', 'api-endpoint', 'proxy-endpoint', 'theme', 'lang'];
 
   private shadow: ShadowRoot;
   private state: ComponentState;
@@ -165,6 +181,20 @@ export class AllfeatAtsRegister extends HTMLElement {
     return this.getAttribute('api-endpoint') || DEFAULT_API_ENDPOINT;
   }
 
+  get proxyEndpoint(): string {
+    return this.getAttribute('proxy-endpoint') || DEFAULT_PROXY_ENDPOINT;
+  }
+
+  /**
+   * Returns true if component is configured to use proxy mode (secure B2B mode)
+   * Proxy mode is used when proxy-endpoint is set OR when no api-key is provided
+   * In proxy mode, credentials are stored server-side, not in the browser
+   */
+  get isProxyMode(): boolean {
+    // Use proxy mode if explicitly set OR if no API key is provided
+    return !!this.getAttribute('proxy-endpoint') || !this.apiKey;
+  }
+
   get theme(): 'light' | 'dark' {
     return (this.getAttribute('theme') as 'light' | 'dark') || 'light';
   }
@@ -228,12 +258,12 @@ export class AllfeatAtsRegister extends HTMLElement {
     const container = this.shadow.querySelector('.ats-container');
     if (!container) return;
 
-    // Check for API key
-    if (!this.apiKey) {
+    // Check configuration: need either proxy-endpoint OR api-key
+    if (!this.isProxyMode && !this.apiKey) {
       container.innerHTML = `
         <div class="ats-alert ats-alert-error">
           <strong>Configuration Error:</strong><br />
-          API key is required. Please set the <code>api-key</code> attribute.
+          Please set either <code>proxy-endpoint</code> (recommended) or <code>api-key</code> attribute.
         </div>
       `;
       return;
@@ -728,11 +758,14 @@ export class AllfeatAtsRegister extends HTMLElement {
         proof: proof,
       };
 
-      // Stage 4: Submit to API
+      // Stage 4: Submit to API (via proxy or directly)
       dispatchBlockchainSubmitting(this, { commitment: bundle.commitment });
       this.updateProgress('submit', 85, 'Submitting to blockchain...');
 
-      const apiResponse = await submitAts(this.apiKey, bundle.commitment, this.apiEndpoint);
+      // Use proxy mode (secure) or direct mode (legacy)
+      const apiResponse = this.isProxyMode
+        ? await submitViaProxy(this.proxyEndpoint, bundle.commitment)
+        : await submitAts(this.apiKey, bundle.commitment, this.apiEndpoint);
 
       this.updateProgress('submit', 95, 'Transaction confirmed');
 
