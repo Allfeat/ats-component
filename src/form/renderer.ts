@@ -6,20 +6,24 @@ import { CREATOR_ROLES } from './types';
  * Icons from https://lucide.dev - MIT License
  */
 const LUCIDE_ICONS = {
-  // file-plus icon for "New Work"
-  filePlus: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15h6"/><path d="M12 18v-6"/></svg>`,
-  // refresh-cw icon for "New Version"
-  refreshCw: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>`,
-  // layers icon for Type step
-  layers: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>`,
-  // file icon for File step
-  file: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>`,
-  // type icon for Title step
-  type: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/></svg>`,
+  // file-text icon for Protection Choice and Title steps
+  fileText: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>`,
+  // upload icon for File Selection step and file drop zones
+  upload: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>`,
   // users icon for Creators step
   users: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
-  // check-circle icon for Review step
-  checkCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>`,
+  // clipboard-list icon for Summary step
+  clipboardList: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>`,
+  // plus icon for "Protect a new work" card
+  plus: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`,
+  // refresh-cw icon for "Protect a new version" card
+  refreshCw: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>`,
+  // circle icon for unselected indicator
+  circle: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`,
+  // check-circle icon for selected indicator (filled)
+  checkCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>`,
+  // arrow-right icon for Continue button
+  arrowRight: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>`,
 } as const;
 
 /**
@@ -27,11 +31,11 @@ const LUCIDE_ICONS = {
  */
 function getStepIcon(stepId: string): string {
   switch (stepId) {
-    case 'choice': return LUCIDE_ICONS.layers;
-    case 'file': return LUCIDE_ICONS.file;
-    case 'title': return LUCIDE_ICONS.type;
+    case 'choice': return LUCIDE_ICONS.fileText;
+    case 'file': return LUCIDE_ICONS.upload;
+    case 'title': return LUCIDE_ICONS.fileText;
     case 'creators': return LUCIDE_ICONS.users;
-    case 'review': return LUCIDE_ICONS.checkCircle;
+    case 'review': return LUCIDE_ICONS.clipboardList;
     default: return '';
   }
 }
@@ -41,11 +45,11 @@ function getStepIcon(stepId: string): string {
  * choice -> file -> title -> creators -> review -> processing -> success
  */
 export const FORM_STEPS_NEW_WORK = [
-  { id: 'choice', label: 'Type' },
-  { id: 'file', label: 'File' },
-  { id: 'title', label: 'Title' },
+  { id: 'choice', label: 'Protection Choice' },
+  { id: 'file', label: 'File Selection' },
+  { id: 'title', label: 'Title of the work' },
   { id: 'creators', label: 'Creators' },
-  { id: 'review', label: 'Review' },
+  { id: 'review', label: 'Summary' },
   { id: 'processing', label: 'Process' },
   { id: 'success', label: 'Done' },
 ] as const;
@@ -55,10 +59,10 @@ export const FORM_STEPS_NEW_WORK = [
  * choice -> file (with ATS) -> creators -> review -> processing -> success
  */
 export const FORM_STEPS_NEW_VERSION = [
-  { id: 'choice', label: 'Type' },
-  { id: 'file', label: 'File' },
+  { id: 'choice', label: 'Protection Choice' },
+  { id: 'file', label: 'File Selection' },
   { id: 'creators', label: 'Creators' },
-  { id: 'review', label: 'Review' },
+  { id: 'review', label: 'Summary' },
   { id: 'processing', label: 'Process' },
   { id: 'success', label: 'Done' },
 ] as const;
@@ -108,27 +112,45 @@ export function renderStepIndicator(currentStep: number, workType: WorkType = nu
  * Render protection choice step (New Work vs New Version)
  */
 export function renderProtectionChoiceStep(workType: WorkType): string {
+  const isNewSelected = workType === 'new';
+  const isVersionSelected = workType === 'version';
+
   return `
-    <div class="ats-section-title">Choose Protection Type</div>
+    <div class="ats-section-title">Protection Choice</div>
     <div class="ats-choice-grid">
-      <div class="ats-choice-card ${workType === 'new' ? 'selected' : ''}" data-choice="new">
-        <div class="ats-choice-icon">${LUCIDE_ICONS.filePlus}</div>
-        <div class="ats-choice-title">New Work</div>
-        <div class="ats-choice-description">
-          Register a brand new creative work that hasn't been protected before.
+      <div class="ats-choice-card ${isNewSelected ? 'selected' : ''}" data-choice="new">
+        <div class="ats-choice-icon">
+          ${LUCIDE_ICONS.plus}
+        </div>
+        <div class="ats-choice-content">
+          <div class="ats-choice-title">Protect a new work</div>
+          <div class="ats-choice-description">
+            Register a new musical work on the blockchain
+          </div>
+        </div>
+        <div class="ats-choice-indicator">
+          ${isNewSelected ? LUCIDE_ICONS.checkCircle : LUCIDE_ICONS.circle}
         </div>
       </div>
-      <div class="ats-choice-card ${workType === 'version' ? 'selected' : ''}" data-choice="version">
-        <div class="ats-choice-icon">${LUCIDE_ICONS.refreshCw}</div>
-        <div class="ats-choice-title">New Version</div>
-        <div class="ats-choice-description">
-          Register a new version of an existing protected work using your ATS certificate.
+      <div class="ats-choice-card ${isVersionSelected ? 'selected' : ''}" data-choice="version">
+        <div class="ats-choice-icon">
+          ${LUCIDE_ICONS.refreshCw}
+        </div>
+        <div class="ats-choice-content">
+          <div class="ats-choice-title">Protect a new version</div>
+          <div class="ats-choice-description">
+            Add a new version to an already protected work
+          </div>
+        </div>
+        <div class="ats-choice-indicator">
+          ${isVersionSelected ? LUCIDE_ICONS.checkCircle : LUCIDE_ICONS.circle}
         </div>
       </div>
     </div>
     <div class="ats-btn-group ats-btn-group-right">
       <button type="button" class="ats-btn ats-btn-primary" id="next-btn" ${!workType ? 'disabled' : ''}>
         Continue
+        ${LUCIDE_ICONS.arrowRight}
       </button>
     </div>
   `;
@@ -148,7 +170,7 @@ export function renderFileStep(state: FormState, errors: { file?: string; atsFil
   return `
     <div class="ats-section-title">Upload Asset File</div>
     <div class="ats-file-drop ${hasFile ? 'has-file' : ''}" id="file-drop-zone">
-      <div class="ats-file-drop-icon">${hasFile ? '✓' : '📁'}</div>
+      <div class="ats-file-drop-icon">${LUCIDE_ICONS.upload}</div>
       <div class="ats-file-drop-text">
         ${hasFile ? 'File selected' : 'Drag and drop your asset file here'}
       </div>
@@ -169,7 +191,7 @@ export function renderFileStep(state: FormState, errors: { file?: string; atsFil
     ${isVersionFlow ? `
       <div class="ats-section-title" style="margin-top: 24px;">Upload Existing ATS Certificate</div>
       <div class="ats-file-drop ${hasAtsFile ? 'has-file' : ''}" id="ats-file-drop-zone">
-        <div class="ats-file-drop-icon">${hasAtsFile ? '✓' : '📋'}</div>
+        <div class="ats-file-drop-icon">${hasAtsFile ? LUCIDE_ICONS.fileText : LUCIDE_ICONS.upload}</div>
         <div class="ats-file-drop-text">
           ${hasAtsFile ? 'Certificate selected' : 'Drag and drop your ATS certificate here'}
         </div>

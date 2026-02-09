@@ -241,9 +241,20 @@
 }
 
 .ats-file-drop-icon {
-  font-size: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: 12px;
   color: var(--ats-text-muted);
+}
+
+.ats-file-drop-icon svg {
+  width: 64px;
+  height: 64px;
+}
+
+.has-file .ats-file-drop-icon {
+  color: var(--ats-primary);
 }
 
 .ats-file-drop-text {
@@ -580,13 +591,16 @@
 }
 
 .ats-choice-card {
-  padding: 24px 20px;
-  background: var(--ats-background-secondary);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: var(--ats-background);
   border: 2px solid var(--ats-border);
   border-radius: var(--ats-radius-lg);
   cursor: pointer;
   transition: all var(--ats-transition);
-  text-align: center;
+  text-align: left;
 }
 
 .ats-choice-card:hover {
@@ -594,36 +608,104 @@
   background: var(--ats-primary-light);
 }
 
+.ats-choice-card:hover .ats-choice-icon {
+  background: var(--ats-primary-light);
+  color: var(--ats-primary);
+}
+
 .ats-choice-card.selected {
   border-color: var(--ats-primary);
   background: var(--ats-primary-light);
-  box-shadow: 0 0 0 3px rgba(77, 184, 168, 0.2);
 }
 
-.ats-choice-icon {
-  font-size: 40px;
-  margin-bottom: 12px;
+.ats-choice-card.selected .ats-choice-title {
   color: var(--ats-primary);
+}
+
+.ats-choice-card.selected .ats-choice-icon {
+  background: var(--ats-primary);
+  color: white;
+}
+
+.ats-choice-card.selected .ats-choice-indicator {
+  color: var(--ats-primary);
+}
+
+/* Choice Card Icon */
+.ats-choice-icon {
   display: flex;
+  align-items: center;
   justify-content: center;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  border-radius: 50%;
+  background: var(--ats-background-secondary);
+  color: var(--ats-text-muted);
+  transition: all var(--ats-transition);
 }
 
 .ats-choice-icon svg {
-  width: 40px;
-  height: 40px;
+  width: 24px;
+  height: 24px;
+}
+
+/* Choice Card Content */
+.ats-choice-content {
+  flex: 1;
+  min-width: 0;
 }
 
 .ats-choice-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--ats-text);
-  margin-bottom: 8px;
+  margin-bottom: 4px;
+  transition: color var(--ats-transition);
 }
 
 .ats-choice-description {
   font-size: 13px;
   color: var(--ats-text-secondary);
   line-height: 1.4;
+}
+
+/* Choice Card Indicator */
+.ats-choice-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
+  color: var(--ats-border);
+  transition: color var(--ats-transition);
+}
+
+.ats-choice-indicator svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Dark theme overrides for choice cards */
+:host([theme="dark"]) .ats-choice-card {
+  background: var(--ats-background-secondary);
+}
+
+:host([theme="dark"]) .ats-choice-card:hover,
+:host([theme="dark"]) .ats-choice-card.selected {
+  background: rgba(77, 184, 168, 0.15);
+}
+
+:host([theme="dark"]) .ats-choice-icon {
+  background: var(--ats-background);
+}
+
+:host([theme="dark"]) .ats-choice-card:hover .ats-choice-icon {
+  background: rgba(77, 184, 168, 0.2);
+}
+
+:host([theme="dark"]) .ats-choice-card.selected .ats-choice-icon {
+  background: var(--ats-primary);
 }
 
 /* Responsive */
@@ -648,7 +730,37 @@
     flex-direction: column-reverse;
   }
 
+  /* Choice cards stack vertically on mobile */
   .ats-choice-grid {
     grid-template-columns: 1fr;
+  }
+
+  .ats-choice-card {
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .ats-choice-icon {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+  }
+
+  .ats-choice-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .ats-choice-title {
+    font-size: 14px;
+  }
+
+  .ats-choice-description {
+    font-size: 12px;
+  }
+
+  .ats-choice-indicator svg {
+    width: 20px;
+    height: 20px;
   }
 }
