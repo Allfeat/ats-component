@@ -38,6 +38,68 @@ const VK: string = vkModule.VK;
 // Import styles
 import styles from './styles/component.css';
 
+// ============================================
+// Color Utilities
+// ============================================
+
+/**
+ * Convert hex color to RGB components
+ */
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16),
+      }
+    : null;
+}
+
+/**
+ * Convert RGB to hex color
+ */
+function rgbToHex(r: number, g: number, b: number): string {
+  return '#' + [r, g, b].map(x => {
+    const hex = Math.max(0, Math.min(255, Math.round(x))).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  }).join('');
+}
+
+/**
+ * Darken a hex color by a percentage (0-100)
+ */
+function darkenColor(hex: string, percent: number): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+
+  const factor = 1 - percent / 100;
+  return rgbToHex(
+    rgb.r * factor,
+    rgb.g * factor,
+    rgb.b * factor
+  );
+}
+
+/**
+ * Create a light/tinted version of a color (for backgrounds)
+ * Returns the color mixed with white at the given opacity
+ */
+function lightenColor(hex: string, opacity: number): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+
+  // Mix with white based on opacity (opacity 0.1 means 10% color, 90% white)
+  const mixFactor = opacity;
+  return rgbToHex(
+    255 - (255 - rgb.r) * mixFactor,
+    255 - (255 - rgb.g) * mixFactor,
+    255 - (255 - rgb.b) * mixFactor
+  );
+}
+
+const DEFAULT_PRIMARY_COLOR = '#4DB8A8';
+
 /**
  * Component state
  */
@@ -72,7 +134,6 @@ const DEFAULT_PROXY_ENDPOINT = 'https://ats-webcomponent-test.jad-chahed.workers
  * ```html
  * <allfeat-ats-register
  *   proxy-endpoint="https://your-org.workers.dev/ats-proxy"
- *   theme="light"
  * ></allfeat-ats-register>
  * ```
  *
@@ -81,7 +142,6 @@ const DEFAULT_PROXY_ENDPOINT = 'https://ats-webcomponent-test.jad-chahed.workers
  * <allfeat-ats-register
  *   api-key="aft_..."
  *   api-endpoint="https://api.allfeat.io"
- *   theme="light"
  * ></allfeat-ats-register>
  * ```
  *
@@ -89,7 +149,7 @@ const DEFAULT_PROXY_ENDPOINT = 'https://ats-webcomponent-test.jad-chahed.workers
  * API credentials secure on the server side.
  */
 export class AllfeatAtsRegister extends HTMLElement {
-  static observedAttributes = ['api-key', 'wasm-path', 'api-endpoint', 'proxy-endpoint', 'theme', 'lang'];
+  static observedAttributes = ['api-key', 'wasm-path', 'api-endpoint', 'proxy-endpoint', 'lang', 'primary-color'];
 
   private shadow: ShadowRoot;
   private state: ComponentState;
@@ -131,6 +191,11 @@ export class AllfeatAtsRegister extends HTMLElement {
     container.setAttribute('part', 'container');
     this.shadow.appendChild(container);
 
+    // Apply custom primary color if set
+    if (this.getAttribute('primary-color')) {
+      this.updatePrimaryColor(this.primaryColor);
+    }
+
     // Initialize WASM
     try {
       await initWasm();
@@ -156,15 +221,16 @@ export class AllfeatAtsRegister extends HTMLElement {
     if (oldValue === newValue) return;
 
     switch (name) {
-      case 'theme':
-        // Theme is handled via CSS :host([theme="dark"])
-        break;
       case 'api-key':
         // Validate API key format
         if (newValue && !isValidApiKeyFormat(newValue)) {
           console.warn('Invalid API key format. Expected: aft_<64-hex-chars>');
         }
         this.render();
+        break;
+      case 'primary-color':
+        // Update CSS custom properties for the new primary color
+        this.updatePrimaryColor(newValue || DEFAULT_PRIMARY_COLOR);
         break;
     }
   }
@@ -195,8 +261,8 @@ export class AllfeatAtsRegister extends HTMLElement {
     return !!this.getAttribute('proxy-endpoint') || !this.apiKey;
   }
 
-  get theme(): 'light' | 'dark' {
-    return (this.getAttribute('theme') as 'light' | 'dark') || 'light';
+  get primaryColor(): string {
+    return this.getAttribute('primary-color') || DEFAULT_PRIMARY_COLOR;
   }
 
   // ============================================
@@ -248,6 +314,26 @@ export class AllfeatAtsRegister extends HTMLElement {
     if (this.state.currentStep === reviewIndex) {
       await this.handleSubmit();
     }
+  }
+
+  // ============================================
+  // Color Management
+  // ============================================
+
+  /**
+   * Update CSS custom properties for primary color theme
+   */
+  private updatePrimaryColor(color: string): void {
+    const host = this.shadow.host as HTMLElement;
+
+    // Set the main primary color
+    host.style.setProperty('--ats-primary', color);
+
+    // Calculate and set hover variant (10% darker)
+    host.style.setProperty('--ats-primary-hover', darkenColor(color, 10));
+
+    // Calculate and set light variant (for backgrounds, 10% opacity)
+    host.style.setProperty('--ats-primary-light', lightenColor(color, 0.1));
   }
 
   // ============================================
@@ -495,9 +581,24 @@ export class AllfeatAtsRegister extends HTMLElement {
         }
 
         // Update visual state
-        const label = target.closest('.ats-checkbox-item');
+        const label = target.closest('.ats-role-badge');
         if (label) {
           label.classList.toggle('selected', target.checked);
+
+          // Add or remove check icon dynamically
+          const existingCheck = label.querySelector('.ats-role-check');
+          if (target.checked && !existingCheck) {
+            const checkSpan = document.createElement('span');
+            checkSpan.className = 'ats-role-check';
+            checkSpan.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+            // Insert after the hidden checkbox input
+            const input = label.querySelector('input');
+            if (input) {
+              input.after(checkSpan);
+            }
+          } else if (!target.checked && existingCheck) {
+            existingCheck.remove();
+          }
         }
       });
     });
@@ -513,7 +614,7 @@ export class AllfeatAtsRegister extends HTMLElement {
     container.querySelectorAll('.remove-creator').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const idx = parseInt((e.target as HTMLButtonElement).dataset.index || '0');
-        if (idx > 0) {
+        if (this.state.formState.creators.length > 1) {
           this.state.formState.creators.splice(idx, 1);
           this.render();
         }
@@ -847,6 +948,7 @@ export class AllfeatAtsRegister extends HTMLElement {
         blockTimestamp: apiResponse.blockTimestamp,
         zkpBundle: zkpBundle,
         explorerUrl: `https://polkadot.js.org/apps/?rpc=${encodeURIComponent('wss://node-dev.allfeat.io')}#/explorer/query/${apiResponse.txHash}`,
+        primaryColor: this.primaryColor,
       };
 
       const result = await generateCertificatePackage(packageData);

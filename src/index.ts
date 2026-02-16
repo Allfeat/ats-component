@@ -9,7 +9,6 @@
  * <allfeat-ats-register
  *   api-key="aft_your_api_key_here"
  *   api-endpoint="https://api.allfeat.io"
- *   theme="light"
  * ></allfeat-ats-register>
  * ```
  */

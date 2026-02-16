@@ -24,6 +24,8 @@ const LUCIDE_ICONS = {
   checkCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>`,
   // arrow-right icon for Continue button
   arrowRight: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>`,
+  // arrow-left icon for Back button
+  arrowLeft: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>`,
 } as const;
 
 /**
@@ -168,45 +170,35 @@ export function renderFileStep(state: FormState, errors: { file?: string; atsFil
   const canContinue = isVersionFlow ? (hasFile && hasAtsFile) : hasFile;
 
   return `
-    <div class="ats-section-title">Upload Asset File</div>
+    <div class="ats-section-title ats-section-title-centered">File Selection</div>
     <div class="ats-file-drop ${hasFile ? 'has-file' : ''}" id="file-drop-zone">
       <div class="ats-file-drop-icon">${LUCIDE_ICONS.upload}</div>
-      <div class="ats-file-drop-text">
-        ${hasFile ? 'File selected' : 'Drag and drop your asset file here'}
-      </div>
-      <div class="ats-file-drop-hint">
-        ${hasFile ? 'Click to change file' : 'or click to browse (any file type)'}
-      </div>
+      ${hasFile && state.file ? `
+        <div class="ats-file-drop-filename">${state.file.name}</div>
+        <div class="ats-file-drop-size">${formatFileSize(state.file.size)}</div>
+        <button type="button" class="ats-btn ats-btn-outline-destructive" id="remove-file">Remove File</button>
+      ` : `
+        <div class="ats-file-drop-text"><strong>Drag & drop or select your file</strong></div>
+      `}
       <input type="file" id="file-input" class="ats-hidden" />
     </div>
-    ${hasFile && state.file ? `
-      <div class="ats-file-info">
-        <div class="ats-file-name">${state.file.name}</div>
-        <div class="ats-file-size">${formatFileSize(state.file.size)}</div>
-        <button type="button" class="ats-btn ats-btn-sm ats-btn-secondary" id="remove-file">✕</button>
-      </div>
-    ` : ''}
+    <div class="ats-file-help-text">All file types are accepted.</div>
     ${errors.file ? `<div class="ats-error-message">${errors.file}</div>` : ''}
 
     ${isVersionFlow ? `
-      <div class="ats-section-title" style="margin-top: 24px;">Upload Existing ATS Certificate</div>
+      <div class="ats-section-title ats-section-title-centered" style="margin-top: 24px;">ATS Certificate</div>
       <div class="ats-file-drop ${hasAtsFile ? 'has-file' : ''}" id="ats-file-drop-zone">
-        <div class="ats-file-drop-icon">${hasAtsFile ? LUCIDE_ICONS.fileText : LUCIDE_ICONS.upload}</div>
-        <div class="ats-file-drop-text">
-          ${hasAtsFile ? 'Certificate selected' : 'Drag and drop your ATS certificate here'}
-        </div>
-        <div class="ats-file-drop-hint">
-          ${hasAtsFile ? 'Click to change file' : 'or click to browse (.json file)'}
-        </div>
+        <div class="ats-file-drop-icon">${LUCIDE_ICONS.upload}</div>
+        ${hasAtsFile && state.atsFile ? `
+          <div class="ats-file-drop-filename">${state.atsFile.name}</div>
+          <div class="ats-file-drop-size">${formatFileSize(state.atsFile.size)}</div>
+          <button type="button" class="ats-btn ats-btn-outline-destructive" id="remove-ats-file">Remove File</button>
+        ` : `
+          <div class="ats-file-drop-text"><strong>Drag & drop or select your file</strong></div>
+        `}
         <input type="file" id="ats-file-input" accept=".json,application/json" class="ats-hidden" />
       </div>
-      ${hasAtsFile && state.atsFile ? `
-        <div class="ats-file-info">
-          <div class="ats-file-name">${state.atsFile.name}</div>
-          <div class="ats-file-size">${formatFileSize(state.atsFile.size)}</div>
-          <button type="button" class="ats-btn ats-btn-sm ats-btn-secondary" id="remove-ats-file">✕</button>
-        </div>
-      ` : ''}
+      <div class="ats-file-help-text">JSON files only (.json)</div>
       ${state.parsedAtsData ? `
         <div class="ats-alert ats-alert-success" style="margin-top: 12px;">
           <strong>Certificate loaded:</strong> "${escapeHtml(state.parsedAtsData.title)}" (v${state.parsedAtsData.versionNumber - 1})
@@ -215,10 +207,14 @@ export function renderFileStep(state: FormState, errors: { file?: string; atsFil
       ${errors.atsFile ? `<div class="ats-error-message">${errors.atsFile}</div>` : ''}
     ` : ''}
 
-    <div class="ats-btn-group ats-btn-group-between">
-      <button type="button" class="ats-btn ats-btn-secondary" id="back-btn">Back</button>
+    <div class="ats-btn-group ats-btn-group-center">
+      <button type="button" class="ats-btn ats-btn-secondary" id="back-btn">
+        ${LUCIDE_ICONS.arrowLeft}
+        Back
+      </button>
       <button type="button" class="ats-btn ats-btn-primary" id="next-btn" ${!canContinue ? 'disabled' : ''}>
-        Continue
+        Next
+        ${LUCIDE_ICONS.arrowRight}
       </button>
     </div>
   `;
@@ -255,45 +251,44 @@ export const renderDetailsStep = renderTitleStep;
 /**
  * Render a single creator form
  */
-function renderCreatorForm(creator: CreatorFormData, index: number, errors: Record<string, string> = {}): string {
+function renderCreatorForm(creator: CreatorFormData, index: number, creatorsCount: number, errors: Record<string, string> = {}): string {
+  const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
   return `
     <div class="ats-creator-card" data-creator-index="${index}">
-      <div class="ats-creator-header">
-        <span class="ats-creator-title">Creator ${index + 1}</span>
-        ${index > 0 ? `<button type="button" class="ats-btn ats-btn-sm ats-btn-danger remove-creator" data-index="${index}">Remove</button>` : ''}
+      <div class="ats-creator-form-grid">
+        <div class="ats-form-group">
+          <label class="ats-label ats-label-required">Full name</label>
+          <input
+            type="text"
+            class="ats-input creator-fullname ${errors.fullName ? 'error' : ''}"
+            data-index="${index}"
+            placeholder="Enter full name"
+            value="${escapeHtml(creator.fullName)}"
+            maxlength="255"
+          />
+          ${errors.fullName ? `<div class="ats-error-message">${errors.fullName}</div>` : ''}
+        </div>
+
+        <div class="ats-form-group">
+          <label class="ats-label ats-label-required">Email</label>
+          <input
+            type="email"
+            class="ats-input creator-email ${errors.email ? 'error' : ''}"
+            data-index="${index}"
+            placeholder="Enter email address"
+            value="${escapeHtml(creator.email)}"
+            maxlength="255"
+          />
+          ${errors.email ? `<div class="ats-error-message">${errors.email}</div>` : ''}
+        </div>
       </div>
 
-      <div class="ats-form-group">
-        <label class="ats-label ats-label-required">Full Name</label>
-        <input
-          type="text"
-          class="ats-input creator-fullname ${errors.fullName ? 'error' : ''}"
-          data-index="${index}"
-          placeholder="John Doe"
-          value="${escapeHtml(creator.fullName)}"
-          maxlength="255"
-        />
-        ${errors.fullName ? `<div class="ats-error-message">${errors.fullName}</div>` : ''}
-      </div>
-
-      <div class="ats-form-group">
-        <label class="ats-label ats-label-required">Email</label>
-        <input
-          type="email"
-          class="ats-input creator-email ${errors.email ? 'error' : ''}"
-          data-index="${index}"
-          placeholder="john@example.com"
-          value="${escapeHtml(creator.email)}"
-          maxlength="255"
-        />
-        ${errors.email ? `<div class="ats-error-message">${errors.email}</div>` : ''}
-      </div>
-
-      <div class="ats-form-group">
-        <label class="ats-label ats-label-required">Role(s)</label>
+      <div class="ats-form-group" style="margin-top: 16px;">
+        <label class="ats-label ats-label-required">Roles</label>
         <div class="ats-checkbox-group">
           ${CREATOR_ROLES.map(role => `
-            <label class="ats-checkbox-item ${creator.roles.includes(role) ? 'selected' : ''}">
+            <label class="ats-role-badge ${creator.roles.includes(role) ? 'selected' : ''}">
               <input
                 type="checkbox"
                 class="creator-role"
@@ -301,6 +296,7 @@ function renderCreatorForm(creator: CreatorFormData, index: number, errors: Reco
                 value="${role}"
                 ${creator.roles.includes(role) ? 'checked' : ''}
               />
+              ${creator.roles.includes(role) ? `<span class="ats-role-check">${checkIcon}</span>` : ''}
               ${role}
             </label>
           `).join('')}
@@ -308,35 +304,47 @@ function renderCreatorForm(creator: CreatorFormData, index: number, errors: Reco
         ${errors.roles ? `<div class="ats-error-message">${errors.roles}</div>` : ''}
       </div>
 
-      <div class="ats-form-group">
-        <label class="ats-label">IPI (Optional)</label>
-        <input
-          type="text"
-          class="ats-input creator-ipi ${errors.ipi ? 'error' : ''}"
-          data-index="${index}"
-          placeholder="00123456789"
-          value="${escapeHtml(creator.ipi)}"
-          maxlength="11"
-          inputmode="numeric"
-          pattern="[0-9]*"
-        />
-        <div class="ats-help-text">1-11 digits, numbers only (letters will be filtered)</div>
-        ${errors.ipi ? `<div class="ats-error-message">${errors.ipi}</div>` : ''}
+      <hr class="ats-creator-divider" />
+
+      <div class="ats-section-subtitle">Optional Information</div>
+
+      <div class="ats-creator-form-grid">
+        <div class="ats-form-group">
+          <label class="ats-label">IPI (optional)</label>
+          <input
+            type="text"
+            class="ats-input creator-ipi ${errors.ipi ? 'error' : ''}"
+            data-index="${index}"
+            value="${escapeHtml(creator.ipi)}"
+            maxlength="11"
+            inputmode="numeric"
+            pattern="[0-9]*"
+          />
+          <div class="ats-help-text">Format: 1-11 digits (IPI Code or ISNI required)</div>
+          ${errors.ipi ? `<div class="ats-error-message">${errors.ipi}</div>` : ''}
+        </div>
+
+        <div class="ats-form-group">
+          <label class="ats-label">ISNI (optional)</label>
+          <input
+            type="text"
+            class="ats-input creator-isni ${errors.isni ? 'error' : ''}"
+            data-index="${index}"
+            value="${escapeHtml(creator.isni)}"
+            maxlength="16"
+          />
+          <div class="ats-help-text">Format: 16 characters: 15 digits and one digit or X (IPI Code or ISNI required)</div>
+          ${errors.isni ? `<div class="ats-error-message">${errors.isni}</div>` : ''}
+        </div>
       </div>
 
-      <div class="ats-form-group">
-        <label class="ats-label">ISNI (Optional)</label>
-        <input
-          type="text"
-          class="ats-input creator-isni ${errors.isni ? 'error' : ''}"
-          data-index="${index}"
-          placeholder="0000000000000000"
-          value="${escapeHtml(creator.isni)}"
-          maxlength="16"
-        />
-        <div class="ats-help-text">16 characters: 15 digits + check digit (0-9 or X)</div>
-        ${errors.isni ? `<div class="ats-error-message">${errors.isni}</div>` : ''}
-      </div>
+      ${creatorsCount > 1 ? `
+        <div class="ats-creator-remove-container">
+          <button type="button" class="ats-btn ats-btn-outline-destructive remove-creator" style="width: 100%;" data-index="${index}">
+            Remove
+          </button>
+        </div>
+      ` : ''}
     </div>
   `;
 }
@@ -348,11 +356,11 @@ export function renderCreatorsStep(state: FormState, errors: Record<string, Reco
   return `
     <div class="ats-section-title">Creators</div>
     <div class="ats-creators-list">
-      ${state.creators.map((creator, index) => renderCreatorForm(creator, index, errors[index] || {})).join('')}
+      ${state.creators.map((creator, index) => renderCreatorForm(creator, index, state.creators.length, errors[index] || {})).join('')}
     </div>
     ${state.creators.length < 20 ? `
-      <button type="button" class="ats-btn ats-btn-secondary" id="add-creator" style="margin-top: 16px;">
-        + Add Creator
+      <button type="button" class="ats-btn ats-btn-outline-primary" id="add-creator" style="margin-top: 16px;">
+        Add Creator (${state.creators.length}/20)
       </button>
     ` : ''}
     <div class="ats-btn-group ats-btn-group-between">

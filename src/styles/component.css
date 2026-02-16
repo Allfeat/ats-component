@@ -6,7 +6,7 @@
   --ats-primary-light: #e8f5f3;
   --ats-text: #1a1a1a;
   --ats-text-secondary: #666666;
-  --ats-text-muted: #999999;
+  --ats-text-muted: #4a5568;
   --ats-background: #ffffff;
   --ats-background-secondary: #f5f5f5;
   --ats-border: #e0e0e0;
@@ -28,19 +28,6 @@
   font-size: 14px;
   line-height: 1.5;
   color: var(--ats-text);
-}
-
-/* Dark theme */
-:host([theme="dark"]) {
-  --ats-text: #f5f5f5;
-  --ats-text-secondary: #a0a0a0;
-  --ats-text-muted: #707070;
-  --ats-background: #1a1a1a;
-  --ats-background-secondary: #2a2a2a;
-  --ats-border: #404040;
-  --ats-error-light: #2d1f1f;
-  --ats-success-light: #1f2d1f;
-  --ats-warning-light: #2d2a1f;
 }
 
 * {
@@ -75,6 +62,10 @@
   font-weight: 600;
   margin: 0 0 16px;
   color: var(--ats-text);
+}
+
+.ats-section-title-centered {
+  text-align: center;
 }
 
 /* Progress Steps */
@@ -222,11 +213,11 @@
 .ats-file-drop {
   border: 2px dashed var(--ats-border);
   border-radius: var(--ats-radius-lg);
-  padding: 40px 20px;
+  padding: 48px 20px;
   text-align: center;
   cursor: pointer;
   transition: all var(--ats-transition);
-  background: var(--ats-background-secondary);
+  background: var(--ats-background);
 }
 
 .ats-file-drop:hover,
@@ -236,8 +227,8 @@
 }
 
 .ats-file-drop.has-file {
-  border-color: var(--ats-success);
-  background: var(--ats-success-light);
+  border-color: var(--ats-primary);
+  background: var(--ats-primary-light);
 }
 
 .ats-file-drop-icon {
@@ -268,6 +259,30 @@
   color: var(--ats-text-muted);
 }
 
+/* File info displayed inside drop zone when file is selected */
+.ats-file-drop-filename {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ats-text);
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+
+.ats-file-drop-size {
+  font-size: 13px;
+  color: var(--ats-text-muted);
+  margin-bottom: 12px;
+}
+
+/* Help text below drop zone */
+.ats-file-help-text {
+  text-align: center;
+  font-size: 13px;
+  color: var(--ats-text-muted);
+  margin-top: 16px;
+}
+
+/* Legacy file info section (kept for backward compatibility) */
 .ats-file-info {
   display: flex;
   align-items: center;
@@ -341,6 +356,43 @@
   background: #b91c1c;
 }
 
+.ats-btn-outline {
+  background: transparent;
+  color: var(--ats-text);
+  border: 1px solid var(--ats-border);
+}
+
+.ats-btn-outline:hover:not(:disabled) {
+  background: var(--ats-background-secondary);
+  border-color: var(--ats-text-muted);
+}
+
+/* Full-width outline button with primary hover (for Add Creator) */
+.ats-btn-outline-primary {
+  background: transparent;
+  color: var(--ats-text);
+  border: 1px solid var(--ats-border);
+  width: 100%;
+}
+
+.ats-btn-outline-primary:hover:not(:disabled) {
+  border-color: var(--ats-primary);
+  color: var(--ats-primary);
+}
+
+/* Outline button with destructive hover (for Remove buttons) */
+.ats-btn-outline-destructive {
+  background: transparent;
+  color: var(--ats-text);
+  border: 1px solid var(--ats-border);
+}
+
+.ats-btn-outline-destructive:hover:not(:disabled) {
+  border-color: var(--ats-error);
+  color: var(--ats-error);
+  background: transparent;
+}
+
 .ats-btn-lg {
   padding: 14px 28px;
   font-size: 16px;
@@ -371,6 +423,10 @@
   justify-content: space-between;
 }
 
+.ats-btn-group-center {
+  justify-content: center;
+}
+
 /* Creators List */
 .ats-creators-list {
   display: flex;
@@ -379,17 +435,32 @@
 }
 
 .ats-creator-card {
-  padding: 16px;
-  background: var(--ats-background-secondary);
-  border-radius: var(--ats-radius);
-  border-left: 3px solid var(--ats-primary);
+  padding: 24px;
+  background: var(--ats-background);
+  border-radius: var(--ats-radius-lg);
+  border: 1px solid var(--ats-border);
 }
 
-.ats-creator-header {
+/* Container for Remove button at bottom of creator card */
+.ats-creator-remove-container {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+  justify-content: center;
+  padding-top: 16px;
+}
+
+/* Horizontal divider for creator card sections */
+.ats-creator-divider {
+  border: none;
+  border-top: 1px solid var(--ats-border);
+  margin: 20px 0;
+}
+
+/* Section subtitle for optional sections */
+.ats-section-subtitle {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ats-text-secondary);
+  margin-bottom: 16px;
 }
 
 .ats-creator-title {
@@ -432,6 +503,84 @@
   display: none;
 }
 
+/* Creator form grid layout */
+.ats-creator-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 768px) {
+  .ats-creator-form-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.ats-creator-form-grid .ats-form-group {
+  margin-bottom: 0;
+}
+
+/* Role badges (toggle-style selection) */
+.ats-role-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--ats-transition);
+  border: 1px solid var(--ats-border);
+  user-select: none;
+}
+
+.ats-role-badge:not(.selected) {
+  background: var(--ats-background);
+  color: var(--ats-text-secondary);
+}
+
+.ats-role-badge:not(.selected):hover {
+  background: var(--ats-background-secondary);
+  border-color: var(--ats-text-muted);
+}
+
+.ats-role-badge.selected {
+  background: var(--ats-primary);
+  color: white;
+  border-color: var(--ats-primary);
+}
+
+.ats-role-badge:focus-within {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ats-background), 0 0 0 4px var(--ats-primary);
+}
+
+.ats-role-badge input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ats-role-badge .ats-role-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+}
+
+.ats-role-badge .ats-role-check svg {
+  width: 14px;
+  height: 14px;
+}
+
 /* Loading Spinner */
 .ats-spinner {
   width: 20px;
@@ -458,10 +607,6 @@
   justify-content: center;
   gap: 12px;
   border-radius: var(--ats-radius-lg);
-}
-
-:host([theme="dark"]) .ats-loading-overlay {
-  background: rgba(26, 26, 26, 0.9);
 }
 
 .ats-loading-text {
@@ -684,28 +829,6 @@
 .ats-choice-indicator svg {
   width: 24px;
   height: 24px;
-}
-
-/* Dark theme overrides for choice cards */
-:host([theme="dark"]) .ats-choice-card {
-  background: var(--ats-background-secondary);
-}
-
-:host([theme="dark"]) .ats-choice-card:hover,
-:host([theme="dark"]) .ats-choice-card.selected {
-  background: rgba(77, 184, 168, 0.15);
-}
-
-:host([theme="dark"]) .ats-choice-icon {
-  background: var(--ats-background);
-}
-
-:host([theme="dark"]) .ats-choice-card:hover .ats-choice-icon {
-  background: rgba(77, 184, 168, 0.2);
-}
-
-:host([theme="dark"]) .ats-choice-card.selected .ats-choice-icon {
-  background: var(--ats-primary);
 }
 
 /* Responsive */

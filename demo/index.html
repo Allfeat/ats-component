@@ -117,6 +117,62 @@
     .clear-btn:hover {
       background: #e0e0e0;
     }
+
+    .controls-panel {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .controls-panel label {
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+
+    .controls-panel input[type="color"] {
+      width: 48px;
+      height: 36px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      cursor: pointer;
+      padding: 2px;
+    }
+
+    .controls-panel input[type="color"]:hover {
+      border-color: #999;
+    }
+
+    .preset-colors {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .preset-colors button {
+      padding: 8px 12px;
+      font-size: 13px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .preset-colors button:hover {
+      border-color: #999;
+      background: #f5f5f5;
+    }
+
+    .preset-colors button.active {
+      border-color: currentColor;
+      background: #f0f9f7;
+    }
   </style>
   </head>
   <body>
@@ -127,11 +183,23 @@
           work registration</p>
       </div>
 
+      <div class="controls-panel">
+        <label>Primary Color:</label>
+        <input type="color" id="color-picker" value="#4DB8A8">
+        <div class="preset-colors">
+          <button data-color="#4DB8A8" class="active">Teal (default)</button>
+          <button data-color="#3B82F6">Blue</button>
+          <button data-color="#8B5CF6">Purple</button>
+          <button data-color="#EF4444">Red</button>
+          <button data-color="#F59E0B">Orange</button>
+        </div>
+      </div>
+
       <div class="component-wrapper">
         <allfeat-ats-register
           id="ats-component"
           proxy-endpoint="https://ats-webcomponent-test.jad-chahed.workers.dev"
-          theme="light"></allfeat-ats-register>
+        ></allfeat-ats-register>
       </div>
 
       <div class="events-panel">
@@ -168,6 +236,35 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       const component = document.getElementById('ats-component');
+      const colorPicker = document.getElementById('color-picker');
+      const presetButtons = document.querySelectorAll('.preset-colors button');
+
+      // Update component primary color
+      function setPrimaryColor(color) {
+        component.setAttribute('primary-color', color);
+        colorPicker.value = color;
+
+        // Update active state on preset buttons
+        presetButtons.forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.color === color);
+        });
+
+        logEvent('primary-color-changed', { color });
+      }
+
+      // Color picker input handler
+      colorPicker.addEventListener('input', (e) => {
+        setPrimaryColor(e.target.value);
+        // Clear active state from presets when using custom color
+        presetButtons.forEach(btn => btn.classList.remove('active'));
+      });
+
+      // Preset button click handlers
+      presetButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          setPrimaryColor(btn.dataset.color);
+        });
+      });
 
       component.addEventListener('zkp-computing', (e) => {
         logEvent('zkp-computing', e.detail);

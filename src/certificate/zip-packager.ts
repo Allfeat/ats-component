@@ -59,6 +59,8 @@ export interface CertificatePackageData {
 
   // Optional
   explorerUrl?: string;
+  /** Custom primary color for the PDF certificate */
+  primaryColor?: string;
 }
 
 /**
@@ -144,6 +146,7 @@ export async function generateCertificatePackage(
       blockNumber: data.blockNumber,
       blockTimestamp: data.blockTimestamp,
       explorerUrl: data.explorerUrl,
+      primaryColor: data.primaryColor,
     };
 
     const pdfBlob = generateCertificatePDF(pdfData);

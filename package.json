@@ -26,7 +26,8 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run clean && npm run build",
-    "serve": "npx serve -l 3000"
+    "serve": "npx serve -l 3000",
+    "deploy:ovh": "npm run build && bash scripts/deploy-ovh.sh"
   },
   "keywords": [
     "allfeat",

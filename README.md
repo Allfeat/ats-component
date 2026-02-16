@@ -9,7 +9,7 @@ A framework-agnostic web component for registering works on the Allfeat blockcha
 - **Complete Certificate Package**: Generates PDF certificate and JSON metadata, packaged in a ZIP
 - **Framework Agnostic**: Works with vanilla JS, React, Vue, Angular, and any other framework
 - **Fully Typed**: Complete TypeScript definitions included
-- **Customizable**: Theme support (light/dark) and CSS custom properties
+- **Customizable**: CSS custom properties for styling
 
 ## Installation
 
@@ -31,7 +31,6 @@ npm install allfeat-ats-component
 <allfeat-ats-register
   api-key="aft_your_api_key_here"
   api-endpoint="https://api.allfeat.io"
-  theme="light"
 ></allfeat-ats-register>
 ```
 
@@ -50,7 +49,6 @@ Example: `aft_a1b2c3d4e5f6...` (64 hex chars)
 |-----------|------|----------|---------|-------------|
 | `api-key` | string | Yes | - | Your Allfeat API key |
 | `api-endpoint` | string | No | `https://api.allfeat.io` | Backend API URL |
-| `theme` | `'light'` \| `'dark'` | No | `'light'` | Color theme |
 | `lang` | string | No | `'en'` | UI language |
 
 ## Events
@@ -186,7 +184,6 @@ declare global {
         React.HTMLAttributes<HTMLElement> & {
           'api-key'?: string;
           'api-endpoint'?: string;
-          theme?: 'light' | 'dark';
         },
         HTMLElement
       >;
@@ -223,7 +220,6 @@ function AtsRegister({ apiKey }: { apiKey: string }) {
       ref={ref}
       api-key={apiKey}
       api-endpoint="https://api.allfeat.io"
-      theme="light"
     />
   );
 }
@@ -237,7 +233,6 @@ function AtsRegister({ apiKey }: { apiKey: string }) {
     ref="atsForm"
     :api-key="apiKey"
     api-endpoint="https://api.allfeat.io"
-    theme="light"
     @blockchain-success="onSuccess"
     @ats-register-error="onError"
   />
@@ -292,7 +287,6 @@ import { Component, ElementRef, ViewChild, AfterViewInit } from '@angular/core';
       #atsForm
       [attr.api-key]="apiKey"
       api-endpoint="https://api.allfeat.io"
-      theme="light"
     ></allfeat-ats-register>
   `,
 })

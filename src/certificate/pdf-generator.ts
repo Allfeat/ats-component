@@ -28,10 +28,13 @@ export interface CertificateData {
   blockNumber?: number;
   blockTimestamp?: string;
   explorerUrl?: string;
+  /** Custom primary color for the certificate (defaults to teal #4DB8A8) */
+  primaryColor?: string;
 }
 
+const DEFAULT_PRIMARY_COLOR = '#4DB8A8';
+
 const COLORS = {
-  teal: '#4DB8A8',
   black: '#000000',
   gray: '#666666',
 };
@@ -76,6 +79,9 @@ export function generateCertificatePDF(data: CertificateData): Blob {
     unit: 'mm',
     format: 'a4',
   });
+
+  // Use custom primary color or default teal
+  const primaryColor = data.primaryColor || DEFAULT_PRIMARY_COLOR;
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -152,14 +158,14 @@ export function generateCertificatePDF(data: CertificateData): Blob {
   addText('Certificate', pageWidth - margin, yPosition + 6, {
     fontSize: 24,
     fontStyle: 'bold',
-    color: COLORS.teal,
+    color: primaryColor,
     align: 'right',
   });
 
   yPosition += 12;
 
   // Separator line
-  doc.setDrawColor(COLORS.teal);
+  doc.setDrawColor(primaryColor);
   doc.setLineWidth(0.5);
   doc.line(margin, yPosition, pageWidth - margin, yPosition);
 
@@ -173,7 +179,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
   // Row 1: File (left) and Timestamp (right)
   addText('File :', margin, yPosition, {
     fontSize: 9,
-    color: COLORS.teal,
+    color: primaryColor,
     fontStyle: 'bold',
   });
   const maxFilenameWidth = rightColumnX - valueX - 10;
@@ -190,7 +196,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
     const formattedBlockTimestamp = formatTimestampPolkadotStyle(data.blockTimestamp);
     addText('Timestamp :', rightColumnX, yPosition, {
       fontSize: 9,
-      color: COLORS.teal,
+      color: primaryColor,
       fontStyle: 'bold',
     });
     addText(formattedBlockTimestamp, rightValueStartX, yPosition, {
@@ -204,7 +210,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
   // Row 2: Title (left) and Block number (right)
   addText('Title of the work :', margin, yPosition, {
     fontSize: 9,
-    color: COLORS.teal,
+    color: primaryColor,
     fontStyle: 'bold',
   });
   const titleHeight = addWrappedTextWithHeight(data.title, valueX, yPosition, maxFilenameWidth, {
@@ -216,7 +222,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
   if (data.blockNumber) {
     addText('Block number :', rightColumnX, yPosition, {
       fontSize: 9,
-      color: COLORS.teal,
+      color: primaryColor,
       fontStyle: 'bold',
     });
     addText(String(data.blockNumber), rightValueStartX, yPosition, {
@@ -233,7 +239,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
   // Hash commitment
   addText('Hash commitment :', margin, yPosition, {
     fontSize: 9,
-    color: COLORS.teal,
+    color: primaryColor,
     fontStyle: 'bold',
   });
   const hashHeight = addWrappedTextWithHeight(data.hashCommitment, valueX, yPosition, fullWidthMaxWidth, {
@@ -246,7 +252,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
   // Secret
   addText('Secret :', margin, yPosition, {
     fontSize: 9,
-    color: COLORS.teal,
+    color: primaryColor,
     fontStyle: 'bold',
   });
   const secretHeight = addWrappedTextWithHeight(data.secret, valueX, yPosition, fullWidthMaxWidth, {
@@ -260,7 +266,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
   if (data.explorerUrl) {
     addText('Block explorer Allfeat :', margin, yPosition, {
       fontSize: 9,
-      color: COLORS.teal,
+      color: primaryColor,
       fontStyle: 'bold',
     });
     // Explorer URL on same line (smaller font for long URL)
@@ -280,7 +286,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
   // ========== CREATORS SECTION ==========
   addText('Creators:', margin, yPosition, {
     fontSize: 11,
-    color: COLORS.teal,
+    color: primaryColor,
     fontStyle: 'bold',
   });
 
@@ -305,7 +311,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
     // Full name
     addText('Full name :', contentX, yPosition, {
       fontSize: 9,
-      color: COLORS.teal,
+      color: primaryColor,
       fontStyle: 'bold',
     });
     const fullNameHeight = addWrappedTextWithHeight(creator.fullName, creatorValueX, yPosition, creatorMaxWidth, {
@@ -318,7 +324,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
     // Email
     addText('Email :', contentX, yPosition, {
       fontSize: 9,
-      color: COLORS.teal,
+      color: primaryColor,
       fontStyle: 'bold',
     });
     const emailHeight = addWrappedTextWithHeight(creator.email, creatorValueX, yPosition, creatorMaxWidth, {
@@ -331,7 +337,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
     // Roles
     addText('Rôle(s) :', contentX, yPosition, {
       fontSize: 9,
-      color: COLORS.teal,
+      color: primaryColor,
       fontStyle: 'bold',
     });
     const rolesText = creator.roles.join(', ');
@@ -345,7 +351,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
     // IPI (always show, use N/A if empty)
     addText('IPI :', contentX, yPosition, {
       fontSize: 9,
-      color: COLORS.teal,
+      color: primaryColor,
       fontStyle: 'bold',
     });
     addText(creator.ipi || 'N/A', creatorValueX, yPosition, {
@@ -358,7 +364,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
     // ISNI (always show, use N/A if empty)
     addText('ISNI :', contentX, yPosition, {
       fontSize: 9,
-      color: COLORS.teal,
+      color: primaryColor,
       fontStyle: 'bold',
     });
     addText(creator.isni || 'N/A', creatorValueX, yPosition, {
@@ -391,7 +397,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
   }
 
   // Separator line
-  doc.setDrawColor(COLORS.teal);
+  doc.setDrawColor(primaryColor);
   doc.setLineWidth(0.3);
   doc.line(margin, yPosition, pageWidth - margin, yPosition);
 
@@ -400,7 +406,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
   // Section title
   addText('Hash Commitment Reconstruction Procedure', margin, yPosition, {
     fontSize: 11,
-    color: COLORS.teal,
+    color: primaryColor,
     fontStyle: 'bold',
   });
 
@@ -529,7 +535,7 @@ export function generateCertificatePDF(data: CertificateData): Blob {
     doc.setPage(i);
 
     // Separator line at bottom (above footer)
-    doc.setDrawColor(COLORS.teal);
+    doc.setDrawColor(primaryColor);
     doc.setLineWidth(0.5);
     doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
 
