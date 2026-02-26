@@ -1,9 +1,16 @@
 import { initWasm, buildBundle, prove, verify } from './wasm/loader';
 import type { ZkpBundle, ZkpCreator } from './wasm/types';
-import { submitAts, submitViaProxy, DEFAULT_API_ENDPOINT, isValidApiKeyFormat } from './api/client';
+import {
+  submitAts,
+  submitViaProxy,
+  subscribeToTransaction,
+  pollTransactionStatus,
+  DEFAULT_API_ENDPOINT,
+  isValidApiKeyFormat,
+} from './api/client';
 import { AtsApiException } from './api/types';
 import { FormState, createDefaultFormState, createEmptyCreator, WorkType } from './form/types';
-import { creatorSchema, isValidAtsFile, parseAtsFile } from './form/schema';
+import { creatorSchema, isValidAtsFile, parseAtsFileViaApi } from './form/schema';
 import {
   renderStepIndicator,
   renderProtectionChoiceStep,
@@ -641,8 +648,8 @@ export class AllfeatAtsRegister extends HTMLElement {
       return;
     }
 
-    // Parse the ATS certificate
-    const result = await parseAtsFile(file);
+    // Parse the ATS certificate via API (always uses server-side parsing)
+    const result = await parseAtsFileViaApi(file, this.proxyEndpoint);
 
     if (!result.success) {
       this.state.formErrors = { ...this.state.formErrors, atsFile: result.error };
@@ -864,33 +871,25 @@ export class AllfeatAtsRegister extends HTMLElement {
       this.updateProgress('submit', 85, 'Submitting to blockchain...');
 
       // Use proxy mode (secure) or direct mode (legacy)
-      const apiResponse = this.isProxyMode
-        ? await submitViaProxy(this.proxyEndpoint, bundle.commitment)
-        : await submitAts(this.apiKey, bundle.commitment, this.apiEndpoint);
+      if (this.isProxyMode) {
+        const result = await submitViaProxy(this.proxyEndpoint, bundle.commitment);
 
-      this.updateProgress('submit', 95, 'Transaction confirmed');
+        if (result.isAsync) {
+          // Async response - need to track via WebSocket
+          this.updateProgress('blockchain', 86, 'Transaction submitted, waiting for blockchain confirmation...');
 
-      // Store API response
-      this.state.apiResponse = {
-        atsId: apiResponse.ats_id,
-        txHash: apiResponse.tx_hash,
-        blockNumber: apiResponse.block_number,
-        blockTimestamp: new Date().toISOString(),
-      };
-
-      // Dispatch success event
-      dispatchBlockchainSuccess(this, {
-        atsId: apiResponse.ats_id,
-        txHash: apiResponse.tx_hash,
-        blockNumber: apiResponse.block_number,
-        message: apiResponse.message,
-      });
-
-      // Move to success step
-      const successIndex = steps.findIndex(s => s.id === 'success');
-      this.state.currentStep = successIndex;
-      this.state.processingProgress = 100;
-      this.render();
+          await this.waitForTransactionCompletion(result.data.ws_url, result.data.status_url);
+          // Note: waitForTransactionCompletion handles setting apiResponse and moving to success
+          return;
+        } else {
+          // Synchronous response - transaction completed immediately
+          this.handleSyncResponse(result.data, steps);
+        }
+      } else {
+        // Direct mode (legacy) - always synchronous
+        const apiResponse = await submitAts(this.apiKey, bundle.commitment, this.apiEndpoint);
+        this.handleSyncResponse(apiResponse, steps);
+      }
 
     } catch (error) {
       console.error('Submission error:', error);
@@ -927,6 +926,167 @@ export class AllfeatAtsRegister extends HTMLElement {
     this.state.processingProgress = progress;
     this.state.processingMessage = message;
     this.render();
+  }
+
+  /**
+   * Handle synchronous API response (transaction completed immediately)
+   */
+  private handleSyncResponse(
+    apiResponse: { ats_id: number; tx_hash: string; block_number: number; message?: string },
+    steps: ReturnType<typeof getFormSteps>
+  ): void {
+    this.updateProgress('submit', 95, 'Transaction confirmed');
+
+    // Store API response
+    this.state.apiResponse = {
+      atsId: apiResponse.ats_id,
+      txHash: apiResponse.tx_hash,
+      blockNumber: apiResponse.block_number,
+      blockTimestamp: new Date().toISOString(),
+    };
+
+    // Dispatch success event
+    dispatchBlockchainSuccess(this, {
+      atsId: apiResponse.ats_id,
+      txHash: apiResponse.tx_hash,
+      blockNumber: apiResponse.block_number,
+      message: apiResponse.message,
+    });
+
+    // Move to success step
+    const successIndex = steps.findIndex(s => s.id === 'success');
+    this.state.currentStep = successIndex;
+    this.state.processingProgress = 100;
+    this.render();
+  }
+
+  /**
+   * Wait for async transaction completion via WebSocket (with polling fallback)
+   *
+   * Connects to WebSocket for real-time updates. If WebSocket fails,
+   * falls back to polling the status URL.
+   */
+  private waitForTransactionCompletion(wsUrl: string, statusUrl: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const { formState } = this.state;
+      const steps = getFormSteps(formState.workType);
+      let wsCleanup: WebSocket | null = null;
+      let pollingCleanup: (() => void) | null = null;
+      let resolved = false;
+
+      const handleComplete = (details: { tx_hash?: string; block_number?: number; ats_id?: number }) => {
+        if (resolved) return;
+        resolved = true;
+
+        // Clean up
+        if (wsCleanup) {
+          wsCleanup.close();
+        }
+        if (pollingCleanup) {
+          pollingCleanup();
+        }
+
+        // Validate we have all required data
+        if (details.ats_id === undefined || !details.tx_hash || details.block_number === undefined) {
+          reject(new Error('Incomplete transaction data received'));
+          return;
+        }
+
+        this.updateProgress('submit', 95, 'Transaction confirmed');
+
+        // Store API response
+        this.state.apiResponse = {
+          atsId: details.ats_id,
+          txHash: details.tx_hash,
+          blockNumber: details.block_number,
+          blockTimestamp: new Date().toISOString(),
+        };
+
+        // Dispatch success event
+        dispatchBlockchainSuccess(this, {
+          atsId: details.ats_id,
+          txHash: details.tx_hash,
+          blockNumber: details.block_number,
+          message: 'Transaction completed',
+        });
+
+        // Move to success step
+        const successIndex = steps.findIndex(s => s.id === 'success');
+        this.state.currentStep = successIndex;
+        this.state.processingProgress = 100;
+        this.render();
+
+        resolve();
+      };
+
+      const handleError = (error: string) => {
+        if (resolved) return;
+        resolved = true;
+
+        // Clean up
+        if (wsCleanup) {
+          wsCleanup.close();
+        }
+        if (pollingCleanup) {
+          pollingCleanup();
+        }
+
+        reject(new Error(error));
+      };
+
+      const handleProgress = (_step: string, progress: number, description: string) => {
+        if (resolved) return;
+        // Map backend progress (0-100) to our UI range (86-95)
+        const uiProgress = 86 + Math.floor((progress / 100) * 9);
+        this.updateProgress('blockchain', uiProgress, description);
+      };
+
+      // Build WebSocket URL from proxy endpoint
+      // Convert http://localhost:3333 -> ws://localhost:3333
+      const proxyUrl = new URL(this.proxyEndpoint);
+      const wsProtocol = proxyUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+      const baseWsUrl = `${wsProtocol}//${proxyUrl.host}`;
+
+      // Try WebSocket first
+      try {
+        wsCleanup = subscribeToTransaction(
+          wsUrl,
+          baseWsUrl,
+          handleProgress,
+          handleComplete,
+          (wsError) => {
+            console.warn('[WS] WebSocket failed, falling back to polling:', wsError);
+            wsCleanup = null;
+
+            // Fall back to polling
+            const baseHttpUrl = `${proxyUrl.protocol}//${proxyUrl.host}`;
+            pollingCleanup = pollTransactionStatus(
+              statusUrl,
+              baseHttpUrl,
+              handleProgress,
+              handleComplete,
+              handleError,
+              2000, // Poll every 2 seconds
+              120000 // Timeout after 2 minutes
+            );
+          }
+        );
+      } catch (wsInitError) {
+        console.warn('[WS] Failed to initialize WebSocket, using polling:', wsInitError);
+
+        // Fall back to polling immediately
+        const baseHttpUrl = `${proxyUrl.protocol}//${proxyUrl.host}`;
+        pollingCleanup = pollTransactionStatus(
+          statusUrl,
+          baseHttpUrl,
+          handleProgress,
+          handleComplete,
+          handleError,
+          2000,
+          120000
+        );
+      }
+    });
   }
 
   private async handleDownload(): Promise<void> {

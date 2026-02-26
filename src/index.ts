@@ -22,12 +22,20 @@ export {
   checkApiHealth,
   isValidApiKeyFormat,
   isValidHashCommitment,
+  subscribeToTransaction,
+  pollTransactionStatus,
   DEFAULT_API_ENDPOINT,
 } from './api/client';
 
 export type {
   AtsSubmitRequest,
   AtsSubmitResponse,
+  WorkRegistrationAsyncResponse,
+  WsMessage,
+  WsMessageType,
+  WsStepDetails,
+  TransactionStatusResponse,
+  ProxySubmitResult,
 } from './api/types';
 
 export {
@@ -56,7 +64,7 @@ export {
   validateForm,
   validateCreator,
   isValidAtsFile,
-  parseAtsFile,
+  parseAtsFileViaApi,
   creatorSchema,
   workFormSchema,
 } from './form/schema';

@@ -6,15 +6,48 @@ export interface AtsSubmitRequest {
 }
 
 /**
- * Request payload sent from component to organization's proxy
+ * Request payload sent from component to organization's proxy for work registration
  * The proxy is responsible for adding credentials before forwarding to Allfeat API
  */
 export interface ProxySubmitRequest {
+  action: 'register-work';
   hash_commitment: string; // 32-byte hex (with or without 0x prefix)
 }
 
 /**
+ * Request payload for certificate parsing via proxy
+ */
+export interface ParseCertificateRequest {
+  action: 'parse-cert';
+  certificate: string; // Raw JSON string of the ATS certificate
+}
+
+/**
+ * Creator information from parsed certificate
+ */
+export interface ParsedCreatorResponse {
+  fullname: string; // Note: lowercase 'n' from backend
+  email: string;
+  roles: string[];
+  ipi?: string;
+  isni?: string;
+}
+
+/**
+ * Response from certificate parsing endpoint
+ */
+export interface ParseCertificateResponse {
+  ats_id: number;
+  version_number: number;
+  title: string;
+  asset_filename: string;
+  creators: ParsedCreatorResponse[];
+  timestamp?: string;
+}
+
+/**
  * Response from organization's proxy (mirrors Allfeat API response)
+ * This is the synchronous response format (used when transaction completes immediately)
  */
 export interface ProxySubmitResponse {
   status: string;
@@ -23,6 +56,69 @@ export interface ProxySubmitResponse {
   block_number: number;
   message?: string;
 }
+
+/**
+ * Async response from backend (202 Accepted)
+ * Returned when transaction is queued and will be processed asynchronously
+ */
+export interface WorkRegistrationAsyncResponse {
+  transaction_id: string;
+  ws_url: string;
+  status_url: string;
+}
+
+/**
+ * WebSocket message types from backend
+ */
+export type WsMessageType = 'connected' | 'update' | 'error' | 'not_found';
+
+/**
+ * Details included in WebSocket step completion messages
+ */
+export interface WsStepDetails {
+  tx_hash?: string;
+  block_number?: number;
+  ats_id?: number;
+  error?: string;
+}
+
+/**
+ * WebSocket message structure from transaction tracking
+ */
+export interface WsMessage {
+  type: WsMessageType;
+  transaction_id?: string;
+  step?: string;
+  progress?: number;
+  description?: string;
+  details?: WsStepDetails;
+  timestamp?: string;
+  message?: string;
+}
+
+/**
+ * Status URL response (GET /v1/transactions/{id}) for polling fallback
+ */
+export interface TransactionStatusResponse {
+  id: string;
+  current_step: string;
+  progress: number;
+  is_complete: boolean;
+  result?: {
+    success: boolean;
+    tx_hash?: string;
+    block_number?: number;
+    ats_id?: number;
+    error?: string;
+  };
+}
+
+/**
+ * Union type for proxy response (sync or async)
+ */
+export type ProxySubmitResult =
+  | { isAsync: false; data: ProxySubmitResponse }
+  | { isAsync: true; data: WorkRegistrationAsyncResponse };
 
 /**
  * Successful response from ATS submission
@@ -56,6 +152,7 @@ export enum ApiErrorCode {
   TRANSACTION_FAILED = 'TRANSACTION_FAILED',
   NETWORK_ERROR = 'NETWORK_ERROR',
   PROXY_ERROR = 'PROXY_ERROR',
+  CERTIFICATE_PARSE_ERROR = 'CERTIFICATE_PARSE_ERROR',
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 

@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { parseCertificateViaProxy } from '../api/client';
+import { AtsApiException } from '../api/types';
 
 /**
  * Error messages for form validation
@@ -174,9 +176,19 @@ export function isValidAtsFile(file: File): boolean {
 }
 
 /**
- * Parse and validate ATS certificate JSON structure
+ * Parse ATS certificate via API (proxy mode)
+ *
+ * Sends the certificate JSON to the proxy backend for server-side parsing.
+ * This avoids the need for client-side WASM certificate parsing.
+ *
+ * @param file - The certificate JSON file
+ * @param proxyEndpoint - The organization's proxy URL
+ * @returns Parsed certificate data or error
  */
-export async function parseAtsFile(file: File): Promise<{
+export async function parseAtsFileViaApi(
+  file: File,
+  proxyEndpoint: string
+): Promise<{
   success: true;
   data: {
     title: string;
@@ -186,43 +198,42 @@ export async function parseAtsFile(file: File): Promise<{
   };
 } | { success: false; error: string }> {
   try {
-    const text = await file.text();
-    const json = JSON.parse(text);
+    // Read file content
+    const certificateJson = await file.text();
 
-    // Validate required fields
-    if (!json.title || typeof json.title !== 'string') {
-      return { success: false, error: 'Missing or invalid title in ATS certificate' };
+    // Validate it's valid JSON before sending
+    try {
+      JSON.parse(certificateJson);
+    } catch {
+      return { success: false, error: 'Invalid JSON file' };
     }
 
-    if (!json.atsId || typeof json.atsId !== 'number') {
-      return { success: false, error: 'Missing or invalid atsId in ATS certificate' };
-    }
+    // Call API to parse certificate
+    const response = await parseCertificateViaProxy(proxyEndpoint, certificateJson);
 
-    // Creators are optional but should be validated if present
-    const creators = json.creators || [];
-    if (!Array.isArray(creators)) {
-      return { success: false, error: 'Invalid creators format in ATS certificate' };
-    }
-
-    // Map creators to expected format with required string fields
-    const mappedCreators = creators.map((c: Record<string, unknown>) => ({
-      fullName: String(c.fullName || ''),
-      email: String(c.email || ''),
-      roles: Array.isArray(c.roles) ? c.roles.map(String) : [],
-      ipi: String(c.ipi || ''),
-      isni: String(c.isni || ''),
+    // Map response to expected format
+    // Note: API returns fullname (lowercase n), we need fullName (camelCase)
+    const mappedCreators = response.creators.map((c) => ({
+      fullName: c.fullname, // Map fullname -> fullName
+      email: c.email,
+      roles: c.roles,
+      ipi: c.ipi || '',
+      isni: c.isni || '',
     }));
 
     return {
       success: true,
       data: {
-        title: json.title,
+        title: response.title,
         creators: mappedCreators,
-        atsId: json.atsId,
-        versionNumber: (json.versionNumber || 1) + 1, // Increment version for new version
+        atsId: response.ats_id,
+        versionNumber: response.version_number + 1, // Increment for new version
       },
     };
-  } catch {
-    return { success: false, error: 'Failed to parse ATS certificate file' };
+  } catch (error) {
+    // Return error message
+    const message =
+      error instanceof AtsApiException ? error.message : 'Failed to parse certificate via API';
+    return { success: false, error: message };
   }
 }
