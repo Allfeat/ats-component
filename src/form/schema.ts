@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { parseCertificateViaProxy } from '../api/client';
-import { AtsApiException } from '../api/types';
+import { AtsApiException, ApiErrorCode } from '../api/types';
 
 /**
  * Error messages for form validation
@@ -178,12 +178,13 @@ export function isValidAtsFile(file: File): boolean {
 /**
  * Parse ATS certificate via API (proxy mode)
  *
- * Sends the certificate JSON to the proxy backend for server-side parsing.
- * This avoids the need for client-side WASM certificate parsing.
+ * Sends the certificate JSON to the proxy backend for server-side parsing
+ * and blockchain verification. Ensures the certificate is authentic by
+ * checking that the atsId and version exist on the blockchain.
  *
  * @param file - The certificate JSON file
  * @param proxyEndpoint - The organization's proxy URL
- * @returns Parsed certificate data or error
+ * @returns Parsed certificate data or error (with optional errorCode for verification failures)
  */
 export async function parseAtsFileViaApi(
   file: File,
@@ -195,8 +196,9 @@ export async function parseAtsFileViaApi(
     creators: Array<{ fullName: string; email: string; roles: string[]; ipi: string; isni: string }>;
     atsId: number;
     versionNumber: number;
+    verified: boolean;
   };
-} | { success: false; error: string }> {
+} | { success: false; error: string; errorCode?: ApiErrorCode }> {
   try {
     // Read file content
     const certificateJson = await file.text();
@@ -208,8 +210,26 @@ export async function parseAtsFileViaApi(
       return { success: false, error: 'Invalid JSON file' };
     }
 
-    // Call API to parse certificate
+    // Call API to parse certificate (includes blockchain verification)
     const response = await parseCertificateViaProxy(proxyEndpoint, certificateJson);
+
+    // Check verification result if present
+    if (response.verification) {
+      if (!response.verification.ats_exists) {
+        return {
+          success: false,
+          error: `Work with ATS ID ${response.ats_id} does not exist on blockchain. Invalid certificate.`,
+          errorCode: ApiErrorCode.ATS_NOT_FOUND,
+        };
+      }
+      if (!response.verification.version_exists) {
+        return {
+          success: false,
+          error: `Version ${response.version_number} for ATS ID ${response.ats_id} does not exist on blockchain. Invalid certificate.`,
+          errorCode: ApiErrorCode.VERSION_NOT_FOUND,
+        };
+      }
+    }
 
     // Map response to expected format
     // Note: API returns fullname (lowercase n), we need fullName (camelCase)
@@ -228,6 +248,7 @@ export async function parseAtsFileViaApi(
         creators: mappedCreators,
         atsId: response.ats_id,
         versionNumber: response.version_number + 1, // Increment for new version
+        verified: response.verification?.ats_exists === true && response.verification?.version_exists === true,
       },
     };
   } catch (error) {

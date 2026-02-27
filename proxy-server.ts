@@ -178,7 +178,7 @@ async function handleParseCert(body: any) {
     );
   }
 
-  const url = `${env.ALLFEAT_API_URL}/v1/certificates/parse`;
+  const url = `${env.ALLFEAT_API_URL}/v1/certificates/parse?network=${env.ALLFEAT_NETWORK}`;
   const headers = {
     "Content-Type": "application/json",
     "x-api-key": env.ALLFEAT_API_KEY,

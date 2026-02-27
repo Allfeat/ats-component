@@ -34,6 +34,14 @@ export interface ParsedCreatorResponse {
 }
 
 /**
+ * Verification data from blockchain query
+ */
+export interface CertificateVerification {
+  ats_exists: boolean;      // Does the atsId exist on blockchain?
+  version_exists: boolean;  // Does this specific version exist on blockchain?
+}
+
+/**
  * Response from certificate parsing endpoint
  */
 export interface ParseCertificateResponse {
@@ -43,6 +51,8 @@ export interface ParseCertificateResponse {
   asset_filename: string;
   creators: ParsedCreatorResponse[];
   timestamp?: string;
+  // Verification data from blockchain (optional for backward compatibility)
+  verification?: CertificateVerification;
 }
 
 /**
@@ -153,6 +163,9 @@ export enum ApiErrorCode {
   NETWORK_ERROR = 'NETWORK_ERROR',
   PROXY_ERROR = 'PROXY_ERROR',
   CERTIFICATE_PARSE_ERROR = 'CERTIFICATE_PARSE_ERROR',
+  // Certificate verification errors
+  ATS_NOT_FOUND = 'ATS_NOT_FOUND',
+  VERSION_NOT_FOUND = 'VERSION_NOT_FOUND',
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 

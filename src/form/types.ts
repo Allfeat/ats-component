@@ -30,6 +30,8 @@ export interface ParsedAtsData {
   creators: CreatorFormData[];
   atsId: number;
   versionNumber: number;
+  /** Indicates certificate was verified authentic on blockchain */
+  verified?: boolean;
 }
 
 /**

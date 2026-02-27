@@ -199,11 +199,6 @@ export function renderFileStep(state: FormState, errors: { file?: string; atsFil
         <input type="file" id="ats-file-input" accept=".json,application/json" class="ats-hidden" />
       </div>
       <div class="ats-file-help-text">JSON files only (.json)</div>
-      ${state.parsedAtsData ? `
-        <div class="ats-alert ats-alert-success" style="margin-top: 12px;">
-          <strong>Certificate loaded:</strong> "${escapeHtml(state.parsedAtsData.title)}" (v${state.parsedAtsData.versionNumber - 1})
-        </div>
-      ` : ''}
       ${errors.atsFile ? `<div class="ats-error-message">${errors.atsFile}</div>` : ''}
     ` : ''}
 
@@ -382,17 +377,6 @@ export function renderReviewStep(state: FormState): string {
   return `
     <div class="ats-section-title">Review Your Submission</div>
     <div class="ats-summary">
-      ${isVersionFlow && state.parsedAtsData ? `
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">Registration Type</div>
-          <div class="ats-summary-value">New Version of existing work (ATS ID: ${state.parsedAtsData.atsId})</div>
-        </div>
-      ` : `
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">Registration Type</div>
-          <div class="ats-summary-value">New Work</div>
-        </div>
-      `}
       <div class="ats-summary-section">
         <div class="ats-summary-label">Asset File</div>
         <div class="ats-summary-value">${state.file?.name || 'No file selected'}</div>
