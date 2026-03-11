@@ -380,6 +380,66 @@ The component handles various error scenarios:
 - Only the commitment hash is sent to the server
 - API key is transmitted over HTTPS
 
+## Local Development Proxy Server
+
+For local development, a Rust proxy server is included that mirrors the Cloudflare Worker behavior. This allows you to test the component against a local backend API.
+
+### Prerequisites
+
+- [Rust](https://rustup.rs/) (1.75+)
+
+### Building the Proxy
+
+```bash
+cd proxy-server
+cargo build --release
+```
+
+### Configuration
+
+1. Copy the example environment file:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edit `.env` with your credentials:
+   ```bash
+   APP__BACKEND__API_KEY=aft_your_api_key_here
+   APP__BACKEND__PASSPHRASE=your_passphrase_here
+   APP__BACKEND__API_URL=http://localhost:13002
+   APP__BACKEND__NETWORK=testnet
+   ```
+
+### Running
+
+```bash
+cd proxy-server
+cargo run --release
+```
+
+The proxy will start on `http://localhost:3333`.
+
+### Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | POST | Action-based routing (register-raw, download-certificate, parse-cert) |
+| `/v1/transactions/{id}` | GET | Transaction status polling |
+| `/v1/ws/transactions/{id}` | WS | Real-time transaction tracking |
+| `/health` | GET | Health check |
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `APP__SERVER__PORT` | Server port | 3333 |
+| `APP__SERVER__HOST` | Server host | 0.0.0.0 |
+| `APP__BACKEND__API_URL` | Backend API URL | http://localhost:13002 |
+| `APP__BACKEND__API_KEY` | Backend API key | (required) |
+| `APP__BACKEND__PASSPHRASE` | Wallet passphrase | (required) |
+| `APP__BACKEND__NETWORK` | Network (testnet/mainnet) | testnet |
+| `RUST_LOG` | Log level | ats_proxy_server=info |
+
 ## License
 
 MIT License - see LICENSE file for details.

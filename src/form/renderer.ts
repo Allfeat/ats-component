@@ -369,7 +369,6 @@ export function renderCreatorsStep(state: FormState, errors: Record<string, Reco
  * Render review step
  */
 export function renderReviewStep(state: FormState): string {
-  const isVersionFlow = state.workType === 'version';
   const versionInfo = state.parsedAtsData
     ? ` (Version ${state.parsedAtsData.versionNumber})`
     : '';
@@ -450,32 +449,28 @@ function getDefaultProcessingMessage(stage: string): string {
 /**
  * Render success step
  */
-export function renderSuccessStep(atsId: number, txHash: string, blockNumber: number): string {
+export function renderSuccessStep(_atsId: number, _txHash: string, _blockNumber: number): string {
   return `
     <div class="ats-success-container">
-      <div class="ats-success-icon">✓</div>
-      <div class="ats-success-title">Work Registered Successfully!</div>
-      <div class="ats-success-message">
-        Your work has been permanently recorded on the Allfeat blockchain.
+      <div class="ats-success-icon-circle">
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
       </div>
-      <div class="ats-summary" style="text-align: left; margin-bottom: 24px;">
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">ATS ID</div>
-          <div class="ats-summary-value">${atsId}</div>
-        </div>
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">Transaction Hash</div>
-          <div class="ats-summary-value" style="font-size: 12px; word-break: break-all;">${txHash}</div>
-        </div>
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">Block Number</div>
-          <div class="ats-summary-value">${blockNumber}</div>
-        </div>
+      <div class="ats-success-title">Work Protected!</div>
+      <div class="ats-success-message">
+        Your work has been successfully submitted and permanently protected on the blockchain.
+      </div>
+      <div class="ats-success-message-secondary">
+        The information is now immutable and cannot be changed.
       </div>
       <button type="button" class="ats-btn ats-btn-primary ats-btn-lg" id="download-btn">
-        Download Certificate
+        Download .ZIP File
       </button>
-      <button type="button" class="ats-btn ats-btn-secondary" id="reset-btn" style="margin-top: 12px;">
+      <div class="ats-success-download-description">
+        Download the .ZIP file containing your PDF certificate of anteriority and a JSON file that will allow you to protect multiple versions of the same work if needed. The download includes JSON certificate and PDF files.
+      </div>
+      <button type="button" class="ats-btn ats-btn-secondary" id="reset-btn">
         Register Another Work
       </button>
     </div>

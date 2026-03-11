@@ -1,14 +1,12 @@
-import { initWasm, buildBundle, prove, verify } from './wasm/loader';
-import type { ZkpBundle, ZkpCreator } from './wasm/types';
 import {
-  submitAts,
-  submitViaProxy,
+  registerWorkRaw,
+  downloadCertificateViaProxy,
   subscribeToTransaction,
   pollTransactionStatus,
   DEFAULT_API_ENDPOINT,
   isValidApiKeyFormat,
 } from './api/client';
-import { AtsApiException } from './api/types';
+import { AtsApiException, RawCreatorRequest, WsStepDetails } from './api/types';
 import { FormState, createDefaultFormState, createEmptyCreator, WorkType } from './form/types';
 import { creatorSchema, isValidAtsFile, parseAtsFileViaApi } from './form/schema';
 import {
@@ -24,23 +22,11 @@ import {
   getFormSteps,
 } from './form/renderer';
 import {
-  dispatchZkpComputing,
   dispatchBlockchainSubmitting,
   dispatchBlockchainSuccess,
-  dispatchZipReady,
   dispatchError,
   dispatchStepChange,
 } from './utils/events';
-import { generateCertificatePackage, downloadBlob, CertificatePackageData } from './certificate/zip-packager';
-
-// Import proving and verification keys (CommonJS modules)
-// @ts-ignore - CommonJS import
-import pkModule from './constants/pk.js';
-// @ts-ignore - CommonJS import
-import vkModule from './constants/vk.js';
-
-const PK: string = pkModule.PK;
-const VK: string = vkModule.VK;
 
 // Import styles
 import styles from './styles/component.css';
@@ -118,12 +104,12 @@ interface ComponentState {
   processingStage: string;
   processingProgress: number;
   processingMessage?: string;
-  zkpBundle: ZkpBundle | null;
   apiResponse: {
     atsId: number;
     txHash: string;
     blockNumber: number;
     blockTimestamp?: string;
+    workId?: string;  // UUID for certificate download
   } | null;
   error: string | null;
   errorStage?: string;
@@ -156,11 +142,10 @@ const DEFAULT_PROXY_ENDPOINT = 'https://ats-webcomponent-test.jad-chahed.workers
  * API credentials secure on the server side.
  */
 export class AllfeatAtsRegister extends HTMLElement {
-  static observedAttributes = ['api-key', 'wasm-path', 'api-endpoint', 'proxy-endpoint', 'lang', 'primary-color'];
+  static observedAttributes = ['api-key', 'api-endpoint', 'proxy-endpoint', 'lang', 'primary-color'];
 
   private shadow: ShadowRoot;
   private state: ComponentState;
-  private wasmInitialized = false;
 
   constructor() {
     super();
@@ -176,7 +161,6 @@ export class AllfeatAtsRegister extends HTMLElement {
       isLoading: false,
       processingStage: '',
       processingProgress: 0,
-      zkpBundle: null,
       apiResponse: null,
       error: null,
     };
@@ -186,7 +170,7 @@ export class AllfeatAtsRegister extends HTMLElement {
   // Lifecycle
   // ============================================
 
-  async connectedCallback() {
+  connectedCallback() {
     // Inject styles
     const styleEl = document.createElement('style');
     styleEl.textContent = styles;
@@ -201,19 +185,6 @@ export class AllfeatAtsRegister extends HTMLElement {
     // Apply custom primary color if set
     if (this.getAttribute('primary-color')) {
       this.updatePrimaryColor(this.primaryColor);
-    }
-
-    // Initialize WASM
-    try {
-      await initWasm();
-      this.wasmInitialized = true;
-    } catch (error) {
-      console.error('Failed to initialize WASM:', error);
-      dispatchError(this, {
-        stage: 'wasm-init',
-        error: 'Failed to initialize cryptographic module',
-        details: error,
-      });
     }
 
     // Render initial state
@@ -298,7 +269,6 @@ export class AllfeatAtsRegister extends HTMLElement {
       isLoading: false,
       processingStage: '',
       processingProgress: 0,
-      zkpBundle: null,
       apiResponse: null,
       error: null,
     };
@@ -785,111 +755,48 @@ export class AllfeatAtsRegister extends HTMLElement {
   }
 
   private async handleSubmit(): Promise<void> {
-    if (!this.wasmInitialized) {
-      this.state.error = 'Cryptographic module not initialized. Please refresh the page.';
-      this.state.errorStage = 'wasm-init';
-      this.render();
-      return;
-    }
-
     const { formState } = this.state;
     const steps = getFormSteps(formState.workType);
 
     // Move to processing step
     const processingIndex = steps.findIndex(s => s.id === 'processing');
     this.state.currentStep = processingIndex;
-    this.state.processingStage = 'bundle';
+    this.state.processingStage = 'submit';
     this.state.processingProgress = 0;
     this.render();
 
     try {
-      // Read file bytes
-      const fileBuffer = await formState.file!.arrayBuffer();
-      const audioBytes = new Uint8Array(fileBuffer);
-
-      // Prepare creators for WASM
-      const zkpCreators: ZkpCreator[] = formState.creators.map((c) => ({
-        fullName: c.fullName,
+      // Convert creators to raw format expected by server
+      const rawCreators: RawCreatorRequest[] = formState.creators.map((c) => ({
+        full_name: c.fullName,
         email: c.email,
-        roles: c.roles,
+        roles: {
+          author: c.roles.includes('author'),
+          composer: c.roles.includes('composer'),
+          arranger: c.roles.includes('arranger'),
+          adapter: c.roles.includes('adapter'),
+        },
+        ipi: c.ipi || undefined,
+        isni: c.isni || undefined,
       }));
 
-      // Get timestamp
-      const timestamp = BigInt(Math.floor(Date.now() / 1000));
+      this.updateProgress('submit', 10, 'Uploading file to server...');
 
-      // Stage 1: Build bundle
-      dispatchZkpComputing(this, { progress: 10, stage: 'bundle' });
-      this.updateProgress('bundle', 10, 'Computing cryptographic hashes...');
+      // Dispatch event before submission
+      dispatchBlockchainSubmitting(this, { commitment: 'server-side' });
 
-      const { bundle } = buildBundle(formState.title, audioBytes, zkpCreators, timestamp);
+      // Call raw registration endpoint (server handles ZKP)
+      const response = await registerWorkRaw(this.proxyEndpoint, {
+        title: formState.title,
+        creators: rawCreators,
+        file: formState.file!,
+      });
 
-      this.updateProgress('bundle', 30, 'Bundle created successfully');
+      // Always async - track via WebSocket
+      this.updateProgress('blockchain', 30, 'File uploaded, waiting for blockchain confirmation...');
 
-      // Stage 2: Generate proof
-      dispatchZkpComputing(this, { progress: 40, stage: 'proof' });
-      this.updateProgress('proof', 40, 'Generating zero-knowledge proof...');
-
-      const publics = [
-        bundle.hash_title,
-        bundle.hash_audio,
-        bundle.hash_creators,
-        bundle.commitment,
-        bundle.timestamp,
-        bundle.nullifier,
-      ];
-
-      const { proof, publics: proofsPublics } = prove(PK, bundle.secret, publics);
-
-      this.updateProgress('proof', 60, 'Proof generated successfully');
-
-      // Stage 3: Verify proof
-      dispatchZkpComputing(this, { progress: 70, stage: 'verify' });
-      this.updateProgress('verify', 70, 'Verifying proof...');
-
-      const isValid = verify(VK, proof, proofsPublics);
-
-      if (!isValid) {
-        throw new Error('Proof verification failed');
-      }
-
-      this.updateProgress('verify', 80, 'Proof verified successfully');
-
-      // Store ZKP bundle
-      this.state.zkpBundle = {
-        secret: bundle.secret,
-        hash_title: bundle.hash_title,
-        hash_audio: bundle.hash_audio,
-        hash_creators: bundle.hash_creators,
-        commitment: bundle.commitment,
-        timestamp: bundle.timestamp,
-        nullifier: bundle.nullifier,
-        proof: proof,
-      };
-
-      // Stage 4: Submit to API (via proxy or directly)
-      dispatchBlockchainSubmitting(this, { commitment: bundle.commitment });
-      this.updateProgress('submit', 85, 'Submitting to blockchain...');
-
-      // Use proxy mode (secure) or direct mode (legacy)
-      if (this.isProxyMode) {
-        const result = await submitViaProxy(this.proxyEndpoint, bundle.commitment);
-
-        if (result.isAsync) {
-          // Async response - need to track via WebSocket
-          this.updateProgress('blockchain', 86, 'Transaction submitted, waiting for blockchain confirmation...');
-
-          await this.waitForTransactionCompletion(result.data.ws_url, result.data.status_url);
-          // Note: waitForTransactionCompletion handles setting apiResponse and moving to success
-          return;
-        } else {
-          // Synchronous response - transaction completed immediately
-          this.handleSyncResponse(result.data, steps);
-        }
-      } else {
-        // Direct mode (legacy) - always synchronous
-        const apiResponse = await submitAts(this.apiKey, bundle.commitment, this.apiEndpoint);
-        this.handleSyncResponse(apiResponse, steps);
-      }
+      await this.waitForTransactionCompletion(response.ws_url, response.status_url);
+      // Note: waitForTransactionCompletion handles setting apiResponse and moving to success
 
     } catch (error) {
       console.error('Submission error:', error);
@@ -912,7 +819,7 @@ export class AllfeatAtsRegister extends HTMLElement {
       this.state.errorStage = errorStage;
 
       dispatchError(this, {
-        stage: errorStage as 'wasm-init' | 'validation' | 'zkp' | 'api' | 'certificate' | 'unknown',
+        stage: errorStage as 'validation' | 'api' | 'certificate' | 'unknown',
         error: errorMessage,
         details: error,
       });
@@ -925,38 +832,6 @@ export class AllfeatAtsRegister extends HTMLElement {
     this.state.processingStage = stage;
     this.state.processingProgress = progress;
     this.state.processingMessage = message;
-    this.render();
-  }
-
-  /**
-   * Handle synchronous API response (transaction completed immediately)
-   */
-  private handleSyncResponse(
-    apiResponse: { ats_id: number; tx_hash: string; block_number: number; message?: string },
-    steps: ReturnType<typeof getFormSteps>
-  ): void {
-    this.updateProgress('submit', 95, 'Transaction confirmed');
-
-    // Store API response
-    this.state.apiResponse = {
-      atsId: apiResponse.ats_id,
-      txHash: apiResponse.tx_hash,
-      blockNumber: apiResponse.block_number,
-      blockTimestamp: new Date().toISOString(),
-    };
-
-    // Dispatch success event
-    dispatchBlockchainSuccess(this, {
-      atsId: apiResponse.ats_id,
-      txHash: apiResponse.tx_hash,
-      blockNumber: apiResponse.block_number,
-      message: apiResponse.message,
-    });
-
-    // Move to success step
-    const successIndex = steps.findIndex(s => s.id === 'success');
-    this.state.currentStep = successIndex;
-    this.state.processingProgress = 100;
     this.render();
   }
 
@@ -974,7 +849,7 @@ export class AllfeatAtsRegister extends HTMLElement {
       let pollingCleanup: (() => void) | null = null;
       let resolved = false;
 
-      const handleComplete = (details: { tx_hash?: string; block_number?: number; ats_id?: number }) => {
+      const handleComplete = (details: WsStepDetails) => {
         if (resolved) return;
         resolved = true;
 
@@ -994,12 +869,13 @@ export class AllfeatAtsRegister extends HTMLElement {
 
         this.updateProgress('submit', 95, 'Transaction confirmed');
 
-        // Store API response
+        // Store API response (including work_id for certificate download)
         this.state.apiResponse = {
           atsId: details.ats_id,
           txHash: details.tx_hash,
           blockNumber: details.block_number,
           blockTimestamp: new Date().toISOString(),
+          workId: details.work_id,
         };
 
         // Dispatch success event
@@ -1090,44 +966,37 @@ export class AllfeatAtsRegister extends HTMLElement {
   }
 
   private async handleDownload(): Promise<void> {
-    if (!this.state.zkpBundle || !this.state.apiResponse) {
+    if (!this.state.apiResponse?.workId) {
+      console.error('No work_id available for certificate download');
+      dispatchError(this, {
+        stage: 'certificate',
+        error: 'Certificate not available. Work ID missing.',
+        details: null,
+      });
       return;
     }
 
-    const { formState, zkpBundle, apiResponse } = this.state;
-
     try {
-      const packageData: CertificatePackageData = {
-        title: formState.title,
-        assetFilename: formState.file?.name || 'unknown',
-        creators: formState.creators,
-        atsId: apiResponse.atsId,
-        versionNumber: 1,
-        txHash: apiResponse.txHash,
-        blockNumber: apiResponse.blockNumber,
-        blockTimestamp: apiResponse.blockTimestamp,
-        zkpBundle: zkpBundle,
-        explorerUrl: `https://polkadot.js.org/apps/?rpc=${encodeURIComponent('wss://node-dev.allfeat.io')}#/explorer/query/${apiResponse.txHash}`,
-        primaryColor: this.primaryColor,
-      };
+      // Get presigned URL from server
+      const { url } = await downloadCertificateViaProxy(
+        this.proxyEndpoint,
+        this.state.apiResponse.workId
+      );
 
-      const result = await generateCertificatePackage(packageData);
-
-      // Dispatch zip ready event
-      dispatchZipReady(this, {
-        blob: result.zipBlob,
-        filename: result.zipFilename,
-        pdfGenerated: result.pdfGenerated,
-      });
-
-      // Download the file
-      downloadBlob(result.zipBlob, result.zipFilename);
+      // Trigger download via hidden anchor
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = ''; // Let the server set the filename via Content-Disposition
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
 
     } catch (error) {
-      console.error('Certificate generation error:', error);
+      console.error('Certificate download error:', error);
       dispatchError(this, {
         stage: 'certificate',
-        error: 'Failed to generate certificate',
+        error: error instanceof Error ? error.message : 'Failed to download certificate',
         details: error,
       });
     }

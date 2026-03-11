@@ -89,7 +89,61 @@ export interface WsStepDetails {
   tx_hash?: string;
   block_number?: number;
   ats_id?: number;
+  work_id?: string;  // UUID for certificate download
   error?: string;
+}
+
+/**
+ * Creator format for raw registration (matches server)
+ */
+export interface RawCreatorRequest {
+  full_name: string;
+  email: string;
+  roles: {
+    author: boolean;
+    composer: boolean;
+    arranger: boolean;
+    adapter: boolean;
+  };
+  ipi?: string;
+  isni?: string;
+}
+
+/**
+ * Raw registration request via proxy (server-side ZKP)
+ */
+export interface RegisterWorkRawProxyRequest {
+  action: 'register-raw';
+  network?: 'testnet' | 'mainnet';
+  title: string;
+  creators: RawCreatorRequest[];
+  audio_base64: string;  // Base64-encoded file
+  filename: string;
+}
+
+/**
+ * Response from raw registration (always async)
+ */
+export interface RegisterWorkRawResponse {
+  transaction_id: string;
+  ws_url: string;
+  status_url: string;
+}
+
+/**
+ * Download certificate request
+ */
+export interface DownloadCertificateRequest {
+  action: 'download-certificate';
+  work_id: string;
+}
+
+/**
+ * Download response (presigned URL)
+ */
+export interface DownloadCertificateResponse {
+  url: string;
+  expires_at: string;
 }
 
 /**

@@ -3,12 +3,11 @@
  *
  * A framework-agnostic custom element for registering works on the Allfeat blockchain.
  *
- * Usage:
+ * Usage (Proxy Mode - Recommended):
  * ```html
  * <script src="allfeat-ats-register.iife.js"></script>
  * <allfeat-ats-register
- *   api-key="aft_your_api_key_here"
- *   api-endpoint="https://api.allfeat.io"
+ *   proxy-endpoint="https://your-org.workers.dev/ats-proxy"
  * ></allfeat-ats-register>
  * ```
  */
@@ -18,12 +17,14 @@ export { AllfeatAtsRegister } from './allfeat-ats-register';
 
 // API client for external use
 export {
-  submitAts,
   checkApiHealth,
   isValidApiKeyFormat,
-  isValidHashCommitment,
   subscribeToTransaction,
   pollTransactionStatus,
+  registerWorkRaw,
+  downloadCertificateViaProxy,
+  fileToBase64,
+  parseCertificateViaProxy,
   DEFAULT_API_ENDPOINT,
 } from './api/client';
 
@@ -36,6 +37,13 @@ export type {
   WsStepDetails,
   TransactionStatusResponse,
   ProxySubmitResult,
+  RawCreatorRequest,
+  RegisterWorkRawProxyRequest,
+  RegisterWorkRawResponse,
+  DownloadCertificateRequest,
+  DownloadCertificateResponse,
+  ParseCertificateRequest,
+  ParseCertificateResponse,
 } from './api/types';
 
 export {
@@ -82,47 +90,3 @@ export type {
 export {
   EVENT_NAMES,
 } from './utils/events';
-
-// Certificate types
-export type {
-  CertificateData,
-  CertificateCreator,
-} from './certificate/pdf-generator';
-
-export type {
-  CertificatePackageData,
-  CertificatePackageResult,
-} from './certificate/zip-packager';
-
-// WASM types
-export type {
-  ZkpBundle,
-  ZkpCreator,
-  BundleResult,
-  ProofResult,
-  AtsCertificateData,
-} from './wasm/types';
-
-// Re-export WASM functions for advanced use
-export {
-  initWasm,
-  isWasmInitialized,
-  setWasmBaseUrl,
-  buildBundle,
-  prove,
-  verify,
-  calculateCommitment,
-  generateCertificateJson,
-  parseCertificate,
-} from './wasm/loader';
-
-// Certificate generation for standalone use
-export { generateCertificatePDF } from './certificate/pdf-generator';
-export { generateJsonCertificate, generateTimestamp } from './certificate/json-generator';
-export {
-  generateCertificatePackage,
-  generateAndDownloadCertificate,
-  downloadBlob,
-  generateAtsFileName,
-  generateZipFileName,
-} from './certificate/zip-packager';

@@ -99,71 +99,6 @@ function logError(context: string, error: any): void {
 // Request Handlers
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function handleRegisterWork(body: any) {
-  const { hash_commitment } = body;
-
-  const cleanHash = hash_commitment?.startsWith("0x")
-    ? hash_commitment.slice(2)
-    : hash_commitment;
-
-  if (!cleanHash || !/^[0-9a-fA-F]{64}$/.test(cleanHash)) {
-    console.log(`[PROXY] ✗ Invalid hash_commitment format`);
-    return Response.json(
-      { error: "Invalid hash_commitment format" },
-      {
-        status: 400,
-        headers: corsHeaders,
-      },
-    );
-  }
-
-  const url = `${env.ALLFEAT_API_URL}/v1/works`;
-  const headers = {
-    "Content-Type": "application/json",
-    "x-api-key": env.ALLFEAT_API_KEY,
-  };
-  const requestBody = {
-    hash_commitment,
-    passphrase: env.ALLFEAT_PASSPHRASE,
-    network: env.ALLFEAT_NETWORK,
-  };
-
-  logOutgoing(url, headers, requestBody);
-
-  const startTime = Date.now();
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(requestBody),
-    });
-
-    const data = await response.text();
-    const durationMs = Date.now() - startTime;
-
-    logResponse(response.status, response.statusText || "OK", durationMs, data);
-
-    return new Response(data, {
-      status: response.status,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (fetchError: any) {
-    const durationMs = Date.now() - startTime;
-    logError(`register-work after ${durationMs}ms`, fetchError);
-    return Response.json(
-      {
-        error: "Failed to connect to ATS API",
-        details: fetchError.message,
-      },
-      {
-        status: 502,
-        headers: corsHeaders,
-      },
-    );
-  }
-}
-
 async function handleParseCert(body: any) {
   const { certificate } = body;
 
@@ -217,6 +152,147 @@ async function handleParseCert(body: any) {
         status: 502,
         headers: corsHeaders,
       },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Raw Registration Handler (Server-side ZKP)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function handleRegisterRaw(body: any) {
+  const { title, creators, audio_base64, filename, network } = body;
+
+  // Validate required fields
+  if (!title || typeof title !== "string") {
+    console.log(`[PROXY] ✗ Missing or invalid title field`);
+    return Response.json(
+      { error: "Missing or invalid title field" },
+      { status: 400, headers: corsHeaders },
+    );
+  }
+
+  if (!creators || !Array.isArray(creators) || creators.length === 0) {
+    console.log(`[PROXY] ✗ Missing or invalid creators field`);
+    return Response.json(
+      { error: "Missing or invalid creators field" },
+      { status: 400, headers: corsHeaders },
+    );
+  }
+
+  if (!audio_base64 || typeof audio_base64 !== "string") {
+    console.log(`[PROXY] ✗ Missing or invalid audio_base64 field`);
+    return Response.json(
+      { error: "Missing or invalid audio_base64 field" },
+      { status: 400, headers: corsHeaders },
+    );
+  }
+
+  if (!filename || typeof filename !== "string") {
+    console.log(`[PROXY] ✗ Missing or invalid filename field`);
+    return Response.json(
+      { error: "Missing or invalid filename field" },
+      { status: 400, headers: corsHeaders },
+    );
+  }
+
+  const url = `${env.ALLFEAT_API_URL}/v1/works/raw`;
+  const headers = {
+    "Content-Type": "application/json",
+    "x-api-key": env.ALLFEAT_API_KEY,
+  };
+
+  // Build request payload - add passphrase from env
+  const requestBody = {
+    network: network || env.ALLFEAT_NETWORK,
+    title,
+    creators,
+    audio_base64,
+    filename,
+    passphrase: env.ALLFEAT_PASSPHRASE,
+  };
+
+  logOutgoing(url, headers, { ...requestBody, audio_base64: `[${audio_base64.length} chars]` });
+
+  const startTime = Date.now();
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(requestBody),
+    });
+
+    const data = await response.text();
+    const durationMs = Date.now() - startTime;
+
+    logResponse(response.status, response.statusText || "OK", durationMs, data);
+
+    return new Response(data, {
+      status: response.status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (fetchError: any) {
+    const durationMs = Date.now() - startTime;
+    logError(`register-raw after ${durationMs}ms`, fetchError);
+    return Response.json(
+      {
+        error: "Failed to connect to raw registration API",
+        details: fetchError.message,
+      },
+      { status: 502, headers: corsHeaders },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Certificate Download Handler
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function handleDownloadCertificate(body: any) {
+  const { work_id } = body;
+
+  if (!work_id || typeof work_id !== "string") {
+    console.log(`[PROXY] ✗ Missing or invalid work_id field`);
+    return Response.json(
+      { error: "Missing or invalid work_id field" },
+      { status: 400, headers: corsHeaders },
+    );
+  }
+
+  const url = `${env.ALLFEAT_API_URL}/v1/works/${work_id}/download/certificate`;
+  const headers = {
+    "x-api-key": env.ALLFEAT_API_KEY,
+  };
+
+  console.log(`[PROXY] → GET certificate download URL: ${url}`);
+
+  const startTime = Date.now();
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers,
+    });
+
+    const data = await response.text();
+    const durationMs = Date.now() - startTime;
+
+    logResponse(response.status, response.statusText || "OK", durationMs, data);
+
+    return new Response(data, {
+      status: response.status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (fetchError: any) {
+    const durationMs = Date.now() - startTime;
+    logError(`download-certificate after ${durationMs}ms`, fetchError);
+    return Response.json(
+      {
+        error: "Failed to get certificate download URL",
+        details: fetchError.message,
+      },
+      { status: 502, headers: corsHeaders },
     );
   }
 }
@@ -341,8 +417,10 @@ Bun.serve({
       logIncoming(request.method, action || "(none)", body);
 
       switch (action) {
-        case "register-work":
-          return await handleRegisterWork(body);
+        case "register-raw":
+          return await handleRegisterRaw(body);
+        case "download-certificate":
+          return await handleDownloadCertificate(body);
         case "parse-cert":
           return await handleParseCert(body);
         default:

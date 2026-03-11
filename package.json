@@ -13,8 +13,7 @@
       "require": "./dist/allfeat-ats-register.cjs.js",
       "browser": "./dist/allfeat-ats-register.iife.js",
       "types": "./dist/allfeat-ats-register.d.ts"
-    },
-    "./wasm/*": "./dist/wasm/*"
+    }
   },
   "files": [
     "dist",
@@ -48,8 +47,6 @@
     "url": "https://github.com/Allfeat/allfeat-ats-component"
   },
   "dependencies": {
-    "jszip": "^3.10.1",
-    "jspdf": "^3.0.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -58,7 +55,6 @@
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@rollup/plugin-terser": "^0.4.4",
     "@rollup/plugin-typescript": "^11.1.6",
-    "@rollup/plugin-wasm": "^6.2.2",
     "rollup": "^4.18.0",
     "rollup-plugin-copy": "^3.5.0",
     "tslib": "^2.6.3",

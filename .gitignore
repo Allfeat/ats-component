@@ -33,3 +33,7 @@ coverage/
 *.tmp
 *.temp
 .cache/
+
+# Rust
+proxy-server/target/
+proxy-server/.env

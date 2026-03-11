@@ -12,6 +12,11 @@ import {
   WsStepDetails,
   TransactionStatusResponse,
   ProxySubmitResult,
+  RawCreatorRequest,
+  RegisterWorkRawProxyRequest,
+  RegisterWorkRawResponse,
+  DownloadCertificateRequest,
+  DownloadCertificateResponse,
 } from './types';
 
 /**
@@ -553,5 +558,177 @@ export async function checkApiHealth(endpoint: string = DEFAULT_API_ENDPOINT): P
     return response.ok;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Convert a File to base64 encoded string
+ */
+export function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Remove the data URL prefix (e.g., "data:audio/mpeg;base64,")
+      const base64 = result.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Register work via raw endpoint (server-side ZKP)
+ *
+ * This sends the raw file and metadata to the server, which handles:
+ * - ZKP computation (hashing, proof generation)
+ * - Blockchain submission
+ * - Certificate generation
+ *
+ * @param proxyEndpoint - The organization's proxy URL
+ * @param data - Work registration data (title, creators, file)
+ * @returns Async response with transaction tracking URLs
+ * @throws AtsApiException on any error
+ */
+export async function registerWorkRaw(
+  proxyEndpoint: string,
+  data: {
+    title: string;
+    creators: RawCreatorRequest[];
+    file: File;
+  }
+): Promise<RegisterWorkRawResponse> {
+  // Convert file to base64
+  const audio_base64 = await fileToBase64(data.file);
+
+  // Normalize endpoint
+  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, '');
+
+  // Prepare request body
+  const body: RegisterWorkRawProxyRequest = {
+    action: 'register-raw',
+    title: data.title,
+    creators: data.creators,
+    audio_base64,
+    filename: data.file.name,
+  };
+
+  try {
+    const response = await fetch(normalizedEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    // Handle non-OK responses (202 is success for async operations)
+    if (!response.ok && response.status !== 202) {
+      let errorMessage: string;
+      try {
+        const errorBody = await response.json();
+        errorMessage = errorBody.error || errorBody.message || 'Raw registration failed';
+      } catch {
+        errorMessage = await response.text() || `HTTP ${response.status}`;
+      }
+
+      throw new AtsApiException(
+        errorMessage,
+        ApiErrorCode.PROXY_ERROR,
+        response.status
+      );
+    }
+
+    const responseData = await response.json() as RegisterWorkRawResponse;
+    return responseData;
+  } catch (error) {
+    if (error instanceof AtsApiException) {
+      throw error;
+    }
+
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new AtsApiException(
+        'Network error: Unable to connect to proxy server',
+        ApiErrorCode.NETWORK_ERROR,
+        undefined,
+        error
+      );
+    }
+
+    throw new AtsApiException(
+      error instanceof Error ? error.message : 'Unknown error occurred',
+      ApiErrorCode.PROXY_ERROR,
+      undefined,
+      error
+    );
+  }
+}
+
+/**
+ * Get presigned URL for certificate download
+ *
+ * @param proxyEndpoint - The organization's proxy URL
+ * @param workId - The work UUID (from transaction completion)
+ * @returns Presigned URL for certificate ZIP download
+ * @throws AtsApiException on any error
+ */
+export async function downloadCertificateViaProxy(
+  proxyEndpoint: string,
+  workId: string
+): Promise<DownloadCertificateResponse> {
+  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, '');
+
+  const body: DownloadCertificateRequest = {
+    action: 'download-certificate',
+    work_id: workId,
+  };
+
+  try {
+    const response = await fetch(normalizedEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      let errorMessage: string;
+      try {
+        const errorBody = await response.json();
+        errorMessage = errorBody.error || errorBody.message || 'Certificate download failed';
+      } catch {
+        errorMessage = await response.text() || `HTTP ${response.status}`;
+      }
+
+      throw new AtsApiException(
+        errorMessage,
+        ApiErrorCode.PROXY_ERROR,
+        response.status
+      );
+    }
+
+    return await response.json() as DownloadCertificateResponse;
+  } catch (error) {
+    if (error instanceof AtsApiException) {
+      throw error;
+    }
+
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new AtsApiException(
+        'Network error: Unable to connect to proxy server',
+        ApiErrorCode.NETWORK_ERROR,
+        undefined,
+        error
+      );
+    }
+
+    throw new AtsApiException(
+      error instanceof Error ? error.message : 'Unknown error occurred',
+      ApiErrorCode.PROXY_ERROR,
+      undefined,
+      error
+    );
   }
 }

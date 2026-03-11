@@ -681,17 +681,50 @@
   font-size: 32px;
 }
 
+/* Large circular icon for success page (uses primary color) */
+.ats-success-icon-circle {
+  width: 96px;
+  height: 96px;
+  background: var(--ats-primary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 24px;
+  color: white;
+}
+
+.ats-success-icon-circle svg {
+  width: 48px;
+  height: 48px;
+}
+
 .ats-success-title {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 600;
   color: var(--ats-text);
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .ats-success-message {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--ats-text-secondary);
-  margin-bottom: 24px;
+  margin-bottom: 8px;
+}
+
+.ats-success-message-secondary {
+  font-size: 14px;
+  color: var(--ats-text-muted);
+  margin-bottom: 32px;
+}
+
+.ats-success-download-description {
+  font-size: 13px;
+  color: var(--ats-text-muted);
+  line-height: 1.6;
+  max-width: 400px;
+  margin: 16px auto 24px;
+  text-align: center;
 }
 
 /* Alert */
