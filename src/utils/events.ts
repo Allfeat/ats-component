@@ -41,7 +41,7 @@ export interface ZipReadyDetail {
  * Error event detail
  */
 export interface AtsRegisterErrorDetail {
-  stage: 'wasm-init' | 'validation' | 'zkp' | 'api' | 'certificate' | 'unknown';
+  stage: 'wasm-init' | 'validation' | 'zkp' | 'api' | 'certificate' | 'auth' | 'unknown';
   error: string;
   code?: string;
   details?: unknown;

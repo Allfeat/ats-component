@@ -243,6 +243,7 @@ export enum ApiErrorCode {
   SESSION_ERROR = 'SESSION_ERROR',
   SESSION_EXPIRED = 'SESSION_EXPIRED',
   INVALID_SITE_KEY = 'INVALID_SITE_KEY',
+  DOMAIN_NOT_REGISTERED = 'DOMAIN_NOT_REGISTERED',
   // Prepare/Confirm errors
   PREPARE_ERROR = 'PREPARE_ERROR',
   CONFIRM_ERROR = 'CONFIRM_ERROR',
@@ -303,6 +304,17 @@ export class AtsApiException extends Error {
     return [
       ApiErrorCode.NETWORK_ERROR,
       ApiErrorCode.TRANSACTION_FAILED,
+    ].includes(this.code);
+  }
+
+  /**
+   * Check if error is a fatal authentication error that should hide the component
+   * These errors indicate misconfiguration that cannot be fixed at runtime
+   */
+  isFatalAuthError(): boolean {
+    return [
+      ApiErrorCode.INVALID_SITE_KEY,
+      ApiErrorCode.DOMAIN_NOT_REGISTERED,
     ].includes(this.code);
   }
 }

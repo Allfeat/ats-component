@@ -1,5 +1,6 @@
 import type { FormState, CreatorFormData, WorkType } from './types';
 import type { PrepareRegistrationResponse } from '../api/types';
+import { ApiErrorCode } from '../api/types';
 import { CREATOR_ROLES } from './types';
 
 /**
@@ -532,6 +533,32 @@ export function renderErrorState(error: string, stage?: string): string {
     </div>
     <div class="ats-btn-group ats-btn-group-right">
       <button type="button" class="ats-btn ats-btn-secondary" id="back-btn">Go Back</button>
+    </div>
+  `;
+}
+
+/**
+ * Render fatal authentication error (replaces entire component)
+ * Used for 401 (invalid site-key) and 403 (domain not registered) errors
+ */
+export function renderFatalAuthError(code: ApiErrorCode, message: string): string {
+  const isInvalidKey = code === ApiErrorCode.INVALID_SITE_KEY;
+
+  // Lock icon for invalid key, alert-triangle for domain error
+  const icon = isInvalidKey
+    ? `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
+    : `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`;
+
+  const title = isInvalidKey ? 'Invalid Site Key' : 'Domain Not Registered';
+
+  return `
+    <div class="ats-fatal-error">
+      <div class="ats-fatal-error-icon">
+        ${icon}
+      </div>
+      <div class="ats-fatal-error-title">${title}</div>
+      <div class="ats-fatal-error-message">${escapeHtml(message)}</div>
+      <div class="ats-fatal-error-code">Error code: ${code}</div>
     </div>
   `;
 }

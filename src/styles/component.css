@@ -924,6 +924,58 @@
   height: 24px;
 }
 
+/* Fatal Auth Error */
+.ats-fatal-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 24px;
+  min-height: 300px;
+}
+
+.ats-fatal-error-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--ats-error-light);
+  color: var(--ats-error);
+  margin-bottom: 24px;
+}
+
+.ats-fatal-error-icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.ats-fatal-error-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ats-error);
+  margin-bottom: 12px;
+}
+
+.ats-fatal-error-message {
+  font-size: 14px;
+  color: var(--ats-text-secondary);
+  line-height: 1.6;
+  max-width: 400px;
+  margin-bottom: 16px;
+}
+
+.ats-fatal-error-code {
+  font-size: 12px;
+  color: var(--ats-text-muted);
+  font-family: monospace;
+  background: var(--ats-background-secondary);
+  padding: 6px 12px;
+  border-radius: var(--ats-radius);
+}
+
 /* Responsive */
 @media (max-width: 480px) {
   .ats-container {

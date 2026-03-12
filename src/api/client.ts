@@ -35,13 +35,23 @@ function parseErrorCode(message: string, httpStatus?: number): ApiErrorCode {
   const lowerMessage = message.toLowerCase();
 
   if (httpStatus === 401) {
+    // Only match SESSION_EXPIRED for explicit expiry messages (token refresh scenarios)
     if (lowerMessage.includes("expired") || lowerMessage.includes("session")) {
       return ApiErrorCode.SESSION_EXPIRED;
     }
-    if (lowerMessage.includes("site") || lowerMessage.includes("key")) {
-      return ApiErrorCode.INVALID_SITE_KEY;
+    // Default all other 401s to INVALID_SITE_KEY
+    // This includes "Invalid token", "Invalid site key", or any auth failure during session creation
+    return ApiErrorCode.INVALID_SITE_KEY;
+  }
+
+  if (httpStatus === 403) {
+    // 403 indicates domain not registered or origin not allowed
+    if (lowerMessage.includes("domain") || lowerMessage.includes("origin") ||
+        lowerMessage.includes("not registered") || lowerMessage.includes("not allowed")) {
+      return ApiErrorCode.DOMAIN_NOT_REGISTERED;
     }
-    return ApiErrorCode.SESSION_ERROR;
+    // Default 403 to domain not registered
+    return ApiErrorCode.DOMAIN_NOT_REGISTERED;
   }
 
   if (httpStatus === 400) {

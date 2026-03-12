@@ -9,6 +9,7 @@ import {
   DEFAULT_NETWORK,
 } from './api/client';
 import {
+  ApiErrorCode,
   AtsApiException,
   RawCreatorRequest,
   WsStepDetails,
@@ -26,6 +27,7 @@ import {
   renderProcessingStep,
   renderSuccessStep,
   renderErrorState,
+  renderFatalAuthError,
   getFormSteps,
 } from './form/renderer';
 import {
@@ -127,6 +129,11 @@ interface ComponentState {
   preparedJob: PrepareRegistrationResponse | null;
   isAtsValid: boolean;
   isPreparing: boolean;
+  // Fatal auth error (hides the form)
+  fatalAuthError: {
+    code: ApiErrorCode;
+    message: string;
+  } | null;
 }
 
 /**
@@ -193,6 +200,8 @@ export class AllfeatAtsRegister extends HTMLElement {
       preparedJob: null,
       isAtsValid: false,
       isPreparing: false,
+      // Fatal auth error
+      fatalAuthError: null,
     };
   }
 
@@ -319,7 +328,7 @@ export class AllfeatAtsRegister extends HTMLElement {
    */
   reset(): void {
     // Preserve session state when resetting
-    const { sessionToken, sessionExpiresAt } = this.state;
+    const { sessionToken, sessionExpiresAt, fatalAuthError } = this.state;
     this.state = {
       currentStep: 0,
       formState: createDefaultFormState(),
@@ -336,6 +345,8 @@ export class AllfeatAtsRegister extends HTMLElement {
       preparedJob: null,
       isAtsValid: false,
       isPreparing: false,
+      // Preserve fatal auth error (cannot be reset without fixing config)
+      fatalAuthError,
     };
     this.render();
   }
@@ -402,11 +413,44 @@ export class AllfeatAtsRegister extends HTMLElement {
       console.log('[Session] Initialized, expires in', expires_in, 'seconds');
     } catch (error) {
       console.error('[Session] Failed to initialize:', error);
+
+      // Check for fatal auth errors (should hide the form)
+      if (error instanceof AtsApiException && error.isFatalAuthError()) {
+        this.state.fatalAuthError = {
+          code: error.code,
+          message: this.getFatalErrorMessage(error.code),
+        };
+        this.render();
+
+        // Dispatch error event with auth stage
+        dispatchError(this, {
+          stage: 'auth',
+          error: error.message,
+          code: error.code,
+          details: error,
+        });
+        return;
+      }
+
       dispatchError(this, {
         stage: 'api',
         error: error instanceof AtsApiException ? error.message : 'Session initialization failed',
         details: error,
       });
+    }
+  }
+
+  /**
+   * Get user-friendly error message for fatal auth errors
+   */
+  private getFatalErrorMessage(code: ApiErrorCode): string {
+    switch (code) {
+      case ApiErrorCode.INVALID_SITE_KEY:
+        return 'The site key provided is invalid. Please verify the site-key attribute is correctly configured.';
+      case ApiErrorCode.DOMAIN_NOT_REGISTERED:
+        return 'This domain is not registered to use the Allfeat ATS component. Please register this domain in your dashboard.';
+      default:
+        return 'An authentication error occurred. Please check your configuration.';
     }
   }
 
@@ -461,6 +505,15 @@ export class AllfeatAtsRegister extends HTMLElement {
   private render(): void {
     const container = this.shadow.querySelector('.ats-container');
     if (!container) return;
+
+    // Check for fatal auth error first (hides the entire form)
+    if (this.state.fatalAuthError) {
+      container.innerHTML = renderFatalAuthError(
+        this.state.fatalAuthError.code,
+        this.state.fatalAuthError.message
+      );
+      return;
+    }
 
     // Check configuration: need both site-key and proxy-endpoint
     if (!this.isConfigured) {
