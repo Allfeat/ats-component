@@ -37,3 +37,6 @@ coverage/
 # Rust
 proxy-server/target/
 proxy-server/.env
+
+# Nix
+.direnv/
