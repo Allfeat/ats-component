@@ -1,15 +1,15 @@
 use crate::client::BackendClient;
 use crate::error::AppError;
 use axum::{
-    http::{StatusCode, header},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use serde_json::{Value, json};
 
-/// Handle the `register-raw` action.
+/// Handle the `prepare-raw` action.
 ///
 /// Validates the request payload, injects the passphrase from configuration,
-/// and forwards to `POST /v1/works/raw`.
+/// and forwards to `POST /v1/works/prepare-raw` with the Authorization header.
 ///
 /// Required fields:
 /// - `title`: Work title (string)
@@ -19,8 +19,9 @@ use serde_json::{Value, json};
 ///
 /// Optional fields:
 /// - `network`: Network to use (defaults to config value)
-pub async fn handle_register_raw(
+pub async fn handle_prepare_raw(
     client: &BackendClient,
+    headers: &HeaderMap,
     payload: Value,
 ) -> Result<Response, AppError> {
     // Validate required fields
@@ -51,6 +52,12 @@ pub async fn handle_register_raw(
         .and_then(Value::as_str)
         .unwrap_or(client.network());
 
+    // Extract Authorization header to forward
+    let auth_header = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+
     // Build request body with injected passphrase
     let request_body = json!({
         "network": network,
@@ -68,11 +75,18 @@ pub async fn handle_register_raw(
         audio_size = audio_base64.len(),
         filename = filename,
         network = network,
-        "Processing register-raw request"
+        has_auth = auth_header.is_some(),
+        "Processing prepare-raw request"
     );
 
-    // Forward to backend
-    let (status, body, _duration) = client.post("/v1/works/raw", &request_body).await?;
+    // Forward to backend with auth header
+    let (status, body, _duration) = client
+        .post_with_auth(
+            "/v1/works/prepare-raw",
+            &request_body,
+            auth_header.as_deref(),
+        )
+        .await?;
 
     Ok((
         StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),

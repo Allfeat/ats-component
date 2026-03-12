@@ -1,4 +1,5 @@
 import type { FormState, CreatorFormData, WorkType } from './types';
+import type { PrepareRegistrationResponse } from '../api/types';
 import { CREATOR_ROLES } from './types';
 
 /**
@@ -366,12 +367,55 @@ export function renderCreatorsStep(state: FormState, errors: Record<string, Reco
 }
 
 /**
+ * Render validation status for review step
+ */
+function renderValidationStatus(
+  isPreparing: boolean,
+  isAtsValid: boolean,
+  preparedJob: PrepareRegistrationResponse | null
+): string {
+  if (isPreparing) {
+    return `
+      <div class="ats-validation ats-validation-pending">
+        <div class="ats-validation-spinner"></div>
+        <span>Validating your ATS...</span>
+      </div>
+    `;
+  }
+
+  if (isAtsValid && preparedJob) {
+    return `
+      <div class="ats-validation ats-validation-success">
+        <div class="ats-validation-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        </div>
+        <div class="ats-validation-content">
+          <span class="ats-validation-message">Your ATS is valid and ready to be created</span>
+          <span class="ats-validation-fees">Estimated fees: ${preparedJob.fees.amount} ${preparedJob.fees.currency}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  return '';
+}
+
+/**
  * Render review step
  */
-export function renderReviewStep(state: FormState): string {
+export function renderReviewStep(
+  state: FormState,
+  isPreparing: boolean = false,
+  isAtsValid: boolean = false,
+  preparedJob: PrepareRegistrationResponse | null = null
+): string {
   const versionInfo = state.parsedAtsData
     ? ` (Version ${state.parsedAtsData.versionNumber})`
     : '';
+
+  const canSubmit = isAtsValid && preparedJob && !isPreparing;
 
   return `
     <div class="ats-section-title">Review Your Submission</div>
@@ -395,13 +439,13 @@ export function renderReviewStep(state: FormState): string {
         `).join('')}
       </div>
     </div>
-    <div class="ats-alert ats-alert-warning" style="margin-top: 16px;">
-      Please review all information carefully. Once submitted, this data will be permanently recorded on the blockchain.
-    </div>
+
+    ${renderValidationStatus(isPreparing, isAtsValid, preparedJob)}
+
     <div class="ats-btn-group ats-btn-group-between">
       <button type="button" class="ats-btn ats-btn-secondary" id="back-btn">Back</button>
-      <button type="button" class="ats-btn ats-btn-primary ats-btn-lg" id="submit-btn">
-        Register Work
+      <button type="button" class="ats-btn ats-btn-primary ats-btn-lg" id="submit-btn" ${!canSubmit ? 'disabled' : ''}>
+        Create my ATS
       </button>
     </div>
   `;

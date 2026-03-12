@@ -1,10 +1,10 @@
 use crate::client::BackendClient;
 use crate::error::AppError;
 use axum::{
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Handle the `parse-cert` action.
 ///
@@ -12,7 +12,10 @@ use serde_json::{json, Value};
 ///
 /// Required fields:
 /// - `certificate`: The certificate string to parse
-pub async fn handle_parse_cert(client: &BackendClient, payload: Value) -> Result<Response, AppError> {
+pub async fn handle_parse_cert(
+    client: &BackendClient,
+    payload: Value,
+) -> Result<Response, AppError> {
     // Validate required field
     let certificate = payload
         .get("certificate")

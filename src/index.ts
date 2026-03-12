@@ -3,11 +3,14 @@
  *
  * A framework-agnostic custom element for registering works on the Allfeat blockchain.
  *
- * Usage (Proxy Mode - Recommended):
+ * Usage:
  * ```html
  * <script src="allfeat-ats-register.iife.js"></script>
  * <allfeat-ats-register
+ *   site-key="cpk_..."
  *   proxy-endpoint="https://your-org.workers.dev/ats-proxy"
+ *   service-url="https://component-service.example.com"
+ *   primary-color="#4DB8A8"
  * ></allfeat-ats-register>
  * ```
  */
@@ -17,26 +20,36 @@ export { AllfeatAtsRegister } from './allfeat-ats-register';
 
 // API client for external use
 export {
-  checkApiHealth,
-  isValidApiKeyFormat,
+  // Session management
+  createSession,
+  // Two-phase registration
+  prepareRegistration,
+  confirmRegistration,
+  // Utilities
   subscribeToTransaction,
   pollTransactionStatus,
-  registerWorkRaw,
   downloadCertificateViaProxy,
   fileToBase64,
   parseCertificateViaProxy,
-  DEFAULT_API_ENDPOINT,
+  checkApiHealth,
+  // Constants
+  COMPONENT_SERVICE_URL,
+  DEFAULT_NETWORK,
 } from './api/client';
 
 export type {
-  AtsSubmitRequest,
-  AtsSubmitResponse,
+  // Session types
+  SessionResponse,
+  // Prepare/Confirm types
+  PrepareRegistrationRequest,
+  PrepareRegistrationResponse,
+  ConfirmRegistrationResponse,
+  // Work types
   WorkRegistrationAsyncResponse,
   WsMessage,
   WsMessageType,
   WsStepDetails,
   TransactionStatusResponse,
-  ProxySubmitResult,
   RawCreatorRequest,
   RegisterWorkRawProxyRequest,
   RegisterWorkRawResponse,

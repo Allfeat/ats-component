@@ -1,17 +1,49 @@
+// ============================================
+// Session Management Types
+// ============================================
+
 /**
- * Request payload for ATS submission (direct mode)
+ * Response from session creation
  */
-export interface AtsSubmitRequest {
-  hash_commitment: string; // 32-byte hex (with or without 0x prefix)
+export interface SessionResponse {
+  token: string;
+  expires_in: number; // seconds until expiry
+}
+
+// ============================================
+// Prepare/Confirm Registration Types
+// ============================================
+
+/**
+ * Request payload for prepare registration (validation phase)
+ */
+export interface PrepareRegistrationRequest {
+  title: string;
+  creators: RawCreatorRequest[];
+  audio_base64: string;
+  filename: string;
+  network?: 'testnet' | 'mainnet';
 }
 
 /**
- * Request payload sent from component to organization's proxy for work registration
- * The proxy is responsible for adding credentials before forwarding to Allfeat API
+ * Response from prepare registration
  */
-export interface ProxySubmitRequest {
-  action: 'register-work';
-  hash_commitment: string; // 32-byte hex (with or without 0x prefix)
+export interface PrepareRegistrationResponse {
+  job_id: string;
+  fees: {
+    amount: string;
+    currency: string;
+  };
+  expires_at: string;
+}
+
+/**
+ * Response from confirm registration
+ */
+export interface ConfirmRegistrationResponse {
+  transaction_id: string;
+  ws_url: string;
+  status_url: string;
 }
 
 /**
@@ -207,19 +239,26 @@ export interface AtsApiError {
  * API error codes and their meanings
  */
 export enum ApiErrorCode {
-  INVALID_API_KEY_FORMAT = 'INVALID_API_KEY_FORMAT',
-  INVALID_API_KEY = 'INVALID_API_KEY',
-  MISSING_API_KEY = 'MISSING_API_KEY',
-  INVALID_HASH_COMMITMENT = 'INVALID_HASH_COMMITMENT',
+  // Session errors
+  SESSION_ERROR = 'SESSION_ERROR',
+  SESSION_EXPIRED = 'SESSION_EXPIRED',
+  INVALID_SITE_KEY = 'INVALID_SITE_KEY',
+  // Prepare/Confirm errors
+  PREPARE_ERROR = 'PREPARE_ERROR',
+  CONFIRM_ERROR = 'CONFIRM_ERROR',
+  JOB_EXPIRED = 'JOB_EXPIRED',
+  // Transaction errors
   INSUFFICIENT_BALANCE = 'INSUFFICIENT_BALANCE',
   WALLET_NOT_CONFIGURED = 'WALLET_NOT_CONFIGURED',
   TRANSACTION_FAILED = 'TRANSACTION_FAILED',
+  // Network/communication errors
   NETWORK_ERROR = 'NETWORK_ERROR',
   PROXY_ERROR = 'PROXY_ERROR',
+  // Certificate errors
   CERTIFICATE_PARSE_ERROR = 'CERTIFICATE_PARSE_ERROR',
-  // Certificate verification errors
   ATS_NOT_FOUND = 'ATS_NOT_FOUND',
   VERSION_NOT_FOUND = 'VERSION_NOT_FOUND',
+  // Generic
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 
@@ -240,13 +279,13 @@ export class AtsApiException extends Error {
   }
 
   /**
-   * Check if error is due to invalid/missing API key
+   * Check if error is due to session/authentication issues
    */
   isAuthError(): boolean {
     return [
-      ApiErrorCode.INVALID_API_KEY_FORMAT,
-      ApiErrorCode.INVALID_API_KEY,
-      ApiErrorCode.MISSING_API_KEY,
+      ApiErrorCode.SESSION_ERROR,
+      ApiErrorCode.SESSION_EXPIRED,
+      ApiErrorCode.INVALID_SITE_KEY,
     ].includes(this.code);
   }
 

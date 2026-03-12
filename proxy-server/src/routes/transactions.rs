@@ -3,7 +3,7 @@ use crate::error::AppError;
 use crate::handlers;
 use axum::{
     extract::{Path, State, WebSocketUpgrade},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
 use std::sync::Arc;

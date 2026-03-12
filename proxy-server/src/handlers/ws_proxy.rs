@@ -1,8 +1,8 @@
 use crate::client::BackendClient;
 use axum::{
     extract::{
-        ws::{Message, WebSocket},
         Path, State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
     },
     response::IntoResponse,
 };
@@ -150,14 +150,10 @@ async fn handle_ws(client_ws: WebSocket, client: Arc<BackendClient>, transaction
                     break;
                 }
                 Ok(TungsteniteMessage::Ping(data)) => {
-                    let _ = client_tx
-                        .send(Message::Ping(data.to_vec().into()))
-                        .await;
+                    let _ = client_tx.send(Message::Ping(data.to_vec().into())).await;
                 }
                 Ok(TungsteniteMessage::Pong(data)) => {
-                    let _ = client_tx
-                        .send(Message::Pong(data.to_vec().into()))
-                        .await;
+                    let _ = client_tx.send(Message::Pong(data.to_vec().into())).await;
                 }
                 Ok(TungsteniteMessage::Frame(_)) => {
                     // Raw frames are not forwarded

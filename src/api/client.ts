@@ -1,50 +1,32 @@
 import {
-  AtsSubmitRequest,
-  AtsSubmitResponse,
-  AtsApiException,
   ApiErrorCode,
-  ProxySubmitRequest,
-  ProxySubmitResponse,
+  AtsApiException,
+  ConfirmRegistrationResponse,
+  DownloadCertificateRequest,
+  DownloadCertificateResponse,
   ParseCertificateRequest,
   ParseCertificateResponse,
-  WorkRegistrationAsyncResponse,
-  WsMessage,
-  WsStepDetails,
-  TransactionStatusResponse,
-  ProxySubmitResult,
+  PrepareRegistrationRequest,
+  PrepareRegistrationResponse,
   RawCreatorRequest,
   RegisterWorkRawProxyRequest,
   RegisterWorkRawResponse,
-  DownloadCertificateRequest,
-  DownloadCertificateResponse,
-} from './types';
+  SessionResponse,
+  TransactionStatusResponse,
+  WsMessage,
+  WsStepDetails,
+} from "./types";
 
 /**
- * Default production API endpoint
+ * Component Service URL for session management
+ * This is hardcoded to ensure secure authentication flow
  */
-export const DEFAULT_API_ENDPOINT = 'https://api.web2.dev.allfeat.org';
+export const COMPONENT_SERVICE_URL = "http://localhost:13008";
 
 /**
- * API key format regex: aft_ prefix followed by 64 hex characters
+ * Default network for registration
  */
-const API_KEY_REGEX = /^aft_[0-9a-fA-F]{64}$/;
-
-/**
- * Validate API key format
- */
-export function isValidApiKeyFormat(apiKey: string): boolean {
-  return API_KEY_REGEX.test(apiKey);
-}
-
-/**
- * Validate hash commitment format (32 bytes hex)
- */
-export function isValidHashCommitment(hash: string): boolean {
-  // Remove 0x prefix if present
-  const cleanHash = hash.startsWith('0x') ? hash.slice(2) : hash;
-  // Must be exactly 64 hex characters (32 bytes)
-  return /^[0-9a-fA-F]{64}$/.test(cleanHash);
-}
+export const DEFAULT_NETWORK = "testnet";
 
 /**
  * Parse error message to determine error code
@@ -53,24 +35,27 @@ function parseErrorCode(message: string, httpStatus?: number): ApiErrorCode {
   const lowerMessage = message.toLowerCase();
 
   if (httpStatus === 401) {
-    if (lowerMessage.includes('missing')) {
-      return ApiErrorCode.MISSING_API_KEY;
+    if (lowerMessage.includes("expired") || lowerMessage.includes("session")) {
+      return ApiErrorCode.SESSION_EXPIRED;
     }
-    if (lowerMessage.includes('format')) {
-      return ApiErrorCode.INVALID_API_KEY_FORMAT;
+    if (lowerMessage.includes("site") || lowerMessage.includes("key")) {
+      return ApiErrorCode.INVALID_SITE_KEY;
     }
-    return ApiErrorCode.INVALID_API_KEY;
+    return ApiErrorCode.SESSION_ERROR;
   }
 
   if (httpStatus === 400) {
-    if (lowerMessage.includes('hash_commitment')) {
-      return ApiErrorCode.INVALID_HASH_COMMITMENT;
-    }
-    if (lowerMessage.includes('balance') || lowerMessage.includes('insufficient')) {
+    if (
+      lowerMessage.includes("balance") ||
+      lowerMessage.includes("insufficient")
+    ) {
       return ApiErrorCode.INSUFFICIENT_BALANCE;
     }
-    if (lowerMessage.includes('wallet')) {
+    if (lowerMessage.includes("wallet")) {
       return ApiErrorCode.WALLET_NOT_CONFIGURED;
+    }
+    if (lowerMessage.includes("job") && lowerMessage.includes("expired")) {
+      return ApiErrorCode.JOB_EXPIRED;
     }
   }
 
@@ -81,208 +66,233 @@ function parseErrorCode(message: string, httpStatus?: number): ApiErrorCode {
   return ApiErrorCode.UNKNOWN_ERROR;
 }
 
+// ============================================
+// Session Management
+// ============================================
+
 /**
- * Submit ATS registration to the backend API
+ * Create a new session using site key
  *
- * @param apiKey - The user's API key (format: aft_<64-hex-chars>)
- * @param hashCommitment - The ZKP commitment hash (32-byte hex string)
- * @param endpoint - Optional API endpoint (defaults to production)
- * @returns The submission response with ATS ID, transaction hash, and block number
+ * Calls the Component Service to create a session token that can be used
+ * for subsequent API calls. The browser automatically sends the Origin header.
+ *
+ * @param siteKey - Partner site key (cpk_...)
+ * @param serviceUrl - Component Service URL (optional, defaults to COMPONENT_SERVICE_URL)
+ * @returns Session token and expiration time
  * @throws AtsApiException on any error
  */
-export async function submitAts(
-  apiKey: string,
-  hashCommitment: string,
-  endpoint: string = DEFAULT_API_ENDPOINT
-): Promise<AtsSubmitResponse> {
-  // Validate API key format before making request
-  if (!apiKey) {
-    throw new AtsApiException(
-      'API key is required',
-      ApiErrorCode.MISSING_API_KEY
-    );
-  }
-
-  if (!isValidApiKeyFormat(apiKey)) {
-    throw new AtsApiException(
-      'Invalid API key format. Expected format: aft_<64-hex-chars>',
-      ApiErrorCode.INVALID_API_KEY_FORMAT
-    );
-  }
-
-  // Validate hash commitment format
-  if (!isValidHashCommitment(hashCommitment)) {
-    throw new AtsApiException(
-      'Invalid hash commitment format. Expected 32-byte hex string',
-      ApiErrorCode.INVALID_HASH_COMMITMENT
-    );
-  }
-
-  // Normalize endpoint (remove trailing slash)
-  const normalizedEndpoint = endpoint.replace(/\/+$/, '');
-  const url = `${normalizedEndpoint}/ats`;
-
-  // Prepare request body
-  const body: AtsSubmitRequest = {
-    hash_commitment: hashCommitment,
-  };
+export async function createSession(
+  siteKey: string,
+  serviceUrl: string = COMPONENT_SERVICE_URL
+): Promise<SessionResponse> {
+  const url = `${serviceUrl}/v1/sessions`;
 
   try {
     const response = await fetch(url, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': apiKey,
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ site_key: siteKey }),
+      // Browser automatically sends Origin header for CORS
     });
 
-    // Handle non-OK responses
     if (!response.ok) {
       let errorMessage: string;
       try {
         const errorBody = await response.json();
-        errorMessage = errorBody.error || errorBody.message || 'Unknown error';
+        errorMessage =
+          errorBody.error || errorBody.message || "Session creation failed";
       } catch {
-        errorMessage = await response.text() || `HTTP ${response.status}`;
+        errorMessage = (await response.text()) || `HTTP ${response.status}`;
       }
 
       throw new AtsApiException(
         errorMessage,
         parseErrorCode(errorMessage, response.status),
-        response.status
+        response.status,
       );
     }
 
-    // Parse successful response
-    const data = await response.json() as AtsSubmitResponse;
-    return data;
+    return (await response.json()) as SessionResponse;
   } catch (error) {
-    // Re-throw AtsApiException as-is
     if (error instanceof AtsApiException) {
       throw error;
     }
 
-    // Handle network errors
-    if (error instanceof TypeError && error.message.includes('fetch')) {
+    if (error instanceof TypeError && error.message.includes("fetch")) {
       throw new AtsApiException(
-        'Network error: Unable to connect to API server',
+        "Network error: Unable to connect to authentication service",
         ApiErrorCode.NETWORK_ERROR,
         undefined,
-        error
+        error,
       );
     }
 
-    // Handle other errors
     throw new AtsApiException(
-      error instanceof Error ? error.message : 'Unknown error occurred',
-      ApiErrorCode.UNKNOWN_ERROR,
+      error instanceof Error ? error.message : "Unknown error occurred",
+      ApiErrorCode.SESSION_ERROR,
       undefined,
-      error
+      error,
+    );
+  }
+}
+
+// ============================================
+// Two-Phase Registration (Prepare → Confirm)
+// ============================================
+
+/**
+ * Prepare registration (validation phase)
+ *
+ * Sends work data to the proxy for validation and fee estimation.
+ * The proxy injects the passphrase and forwards to the ATS service.
+ *
+ * @param proxyEndpoint - Proxy server URL
+ * @param sessionToken - Session token from createSession()
+ * @param data - Work registration data
+ * @returns Job ID, fees, and expiration for confirmation
+ * @throws AtsApiException on validation or network error
+ */
+export async function prepareRegistration(
+  proxyEndpoint: string,
+  sessionToken: string,
+  data: PrepareRegistrationRequest,
+): Promise<PrepareRegistrationResponse> {
+  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
+
+  const body = {
+    action: "prepare-raw",
+    title: data.title,
+    creators: data.creators,
+    audio_base64: data.audio_base64,
+    filename: data.filename,
+    network: data.network || DEFAULT_NETWORK,
+  };
+
+  try {
+    const response = await fetch(normalizedEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      let errorMessage: string;
+      try {
+        const errorBody = await response.json();
+        errorMessage =
+          errorBody.error || errorBody.message || "Prepare registration failed";
+      } catch {
+        errorMessage = (await response.text()) || `HTTP ${response.status}`;
+      }
+
+      throw new AtsApiException(
+        errorMessage,
+        ApiErrorCode.PREPARE_ERROR,
+        response.status,
+      );
+    }
+
+    return (await response.json()) as PrepareRegistrationResponse;
+  } catch (error) {
+    if (error instanceof AtsApiException) {
+      throw error;
+    }
+
+    if (error instanceof TypeError && error.message.includes("fetch")) {
+      throw new AtsApiException(
+        "Network error: Unable to connect to proxy server",
+        ApiErrorCode.NETWORK_ERROR,
+        undefined,
+        error,
+      );
+    }
+
+    throw new AtsApiException(
+      error instanceof Error ? error.message : "Unknown error occurred",
+      ApiErrorCode.PREPARE_ERROR,
+      undefined,
+      error,
     );
   }
 }
 
 /**
- * Submit ATS registration via organization's proxy endpoint
+ * Confirm registration (commit phase)
  *
- * This is the secure mode where the component sends only the hash commitment
- * to the organization's proxy, which then adds credentials and forwards to Allfeat API.
+ * Confirms a prepared registration to start blockchain submission.
+ * Must be called before the job expires.
  *
- * Returns either:
- * - Synchronous response with final data (ats_id, tx_hash, block_number)
- * - Async response (202) with transaction_id and ws_url for WebSocket tracking
- *
- * @param proxyEndpoint - The organization's proxy URL
- * @param hashCommitment - The ZKP commitment hash (32-byte hex string)
- * @returns The submission result (sync or async)
- * @throws AtsApiException on any error
+ * @param proxyEndpoint - Proxy server URL
+ * @param sessionToken - Session token from createSession()
+ * @param jobId - Job ID from prepareRegistration()
+ * @returns Transaction tracking URLs
+ * @throws AtsApiException on confirmation or network error
  */
-export async function submitViaProxy(
+export async function confirmRegistration(
   proxyEndpoint: string,
-  hashCommitment: string
-): Promise<ProxySubmitResult> {
-  // Validate hash commitment format
-  if (!isValidHashCommitment(hashCommitment)) {
-    throw new AtsApiException(
-      'Invalid hash commitment format. Expected 32-byte hex string',
-      ApiErrorCode.INVALID_HASH_COMMITMENT
-    );
-  }
+  sessionToken: string,
+  jobId: string,
+): Promise<ConfirmRegistrationResponse> {
+  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
 
-  // Normalize endpoint (remove trailing slash)
-  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, '');
-
-  // Prepare request body with action routing
-  const body: ProxySubmitRequest = {
-    action: 'register-work',
-    hash_commitment: hashCommitment,
+  const body = {
+    action: "confirm",
+    job_id: jobId,
   };
 
   try {
     const response = await fetch(normalizedEndpoint, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
       },
       body: JSON.stringify(body),
     });
 
-    // Handle non-OK responses (except 202 which is async success)
+    // 202 Accepted is success for async operations
     if (!response.ok && response.status !== 202) {
       let errorMessage: string;
       try {
         const errorBody = await response.json();
-        errorMessage = errorBody.error || errorBody.message || 'Proxy request failed';
+        errorMessage =
+          errorBody.error || errorBody.message || "Confirm registration failed";
       } catch {
-        errorMessage = await response.text() || `HTTP ${response.status}`;
+        errorMessage = (await response.text()) || `HTTP ${response.status}`;
       }
 
       throw new AtsApiException(
         errorMessage,
-        ApiErrorCode.PROXY_ERROR,
-        response.status
+        ApiErrorCode.CONFIRM_ERROR,
+        response.status,
       );
     }
 
-    const data = await response.json();
-
-    // Check if this is an async response (202 Accepted)
-    if (response.status === 202 || data.transaction_id) {
-      // Async response - transaction is being processed
-      return {
-        isAsync: true,
-        data: data as WorkRegistrationAsyncResponse,
-      };
-    }
-
-    // Synchronous response - transaction completed immediately
-    return {
-      isAsync: false,
-      data: data as ProxySubmitResponse,
-    };
+    return (await response.json()) as ConfirmRegistrationResponse;
   } catch (error) {
-    // Re-throw AtsApiException as-is
     if (error instanceof AtsApiException) {
       throw error;
     }
 
-    // Handle network errors
-    if (error instanceof TypeError && error.message.includes('fetch')) {
+    if (error instanceof TypeError && error.message.includes("fetch")) {
       throw new AtsApiException(
-        'Network error: Unable to connect to proxy server',
+        "Network error: Unable to connect to proxy server",
         ApiErrorCode.NETWORK_ERROR,
         undefined,
-        error
+        error,
       );
     }
 
-    // Handle other errors
     throw new AtsApiException(
-      error instanceof Error ? error.message : 'Unknown error occurred',
-      ApiErrorCode.PROXY_ERROR,
+      error instanceof Error ? error.message : "Unknown error occurred",
+      ApiErrorCode.CONFIRM_ERROR,
       undefined,
-      error
+      error,
     );
   }
 }
@@ -305,70 +315,72 @@ export function subscribeToTransaction(
   baseWsUrl: string,
   onProgress: (step: string, progress: number, description: string) => void,
   onComplete: (details: WsStepDetails) => void,
-  onError: (error: string) => void
+  onError: (error: string) => void,
 ): WebSocket {
   const fullUrl = baseWsUrl + wsUrl;
   const ws = new WebSocket(fullUrl);
 
   ws.onopen = () => {
-    console.log('[WebSocket] Connected to transaction tracker');
+    console.log("[WebSocket] Connected to transaction tracker");
   };
 
   ws.onmessage = (event) => {
     try {
       const msg: WsMessage = JSON.parse(event.data);
-      console.log('[WebSocket] Message received:', msg);
+      console.log("[WebSocket] Message received:", msg);
 
       switch (msg.type) {
-        case 'connected':
+        case "connected":
           // Initial connection acknowledgment
-          console.log('[WebSocket] Connection acknowledged');
+          console.log("[WebSocket] Connection acknowledged");
           break;
 
-        case 'update':
-          if (msg.step === 'completed' && msg.details) {
+        case "update":
+          if (msg.step === "completed" && msg.details) {
             // Transaction completed successfully
             onComplete(msg.details);
             ws.close();
-          } else if (msg.step === 'failed') {
+          } else if (msg.step === "failed") {
             // Transaction failed
-            onError(msg.details?.error || msg.description || 'Transaction failed');
+            onError(
+              msg.details?.error || msg.description || "Transaction failed",
+            );
             ws.close();
           } else {
             // Progress update
             onProgress(
-              msg.step || 'processing',
+              msg.step || "processing",
               msg.progress || 0,
-              msg.description || 'Processing...'
+              msg.description || "Processing...",
             );
           }
           break;
 
-        case 'error':
-          onError(msg.message || 'WebSocket error occurred');
+        case "error":
+          onError(msg.message || "WebSocket error occurred");
           ws.close();
           break;
 
-        case 'not_found':
-          onError('Transaction not found');
+        case "not_found":
+          onError("Transaction not found");
           ws.close();
           break;
 
         default:
-          console.warn('[WebSocket] Unknown message type:', msg.type);
+          console.warn("[WebSocket] Unknown message type:", msg.type);
       }
     } catch (parseError) {
-      console.error('[WebSocket] Failed to parse message:', parseError);
+      console.error("[WebSocket] Failed to parse message:", parseError);
     }
   };
 
   ws.onerror = (event) => {
-    console.error('[WebSocket] Connection error:', event);
-    onError('WebSocket connection failed');
+    console.error("[WebSocket] Connection error:", event);
+    onError("WebSocket connection failed");
   };
 
   ws.onclose = (event) => {
-    console.log('[WebSocket] Connection closed:', event.code, event.reason);
+    console.log("[WebSocket] Connection closed:", event.code, event.reason);
   };
 
   return ws;
@@ -393,7 +405,7 @@ export function pollTransactionStatus(
   onComplete: (details: WsStepDetails) => void,
   onError: (error: string) => void,
   intervalMs: number = 2000,
-  timeoutMs: number = 60000
+  timeoutMs: number = 60000,
 ): () => void {
   const fullUrl = baseUrl + statusUrl;
   let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -417,9 +429,9 @@ export function pollTransactionStatus(
 
     try {
       const response = await fetch(fullUrl, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
       });
 
@@ -438,17 +450,17 @@ export function pollTransactionStatus(
             ats_id: data.result.ats_id,
           });
         } else {
-          onError(data.result?.error || 'Transaction failed');
+          onError(data.result?.error || "Transaction failed");
         }
       } else {
         onProgress(
           data.current_step,
           data.progress,
-          `Processing: ${data.current_step}`
+          `Processing: ${data.current_step}`,
         );
       }
     } catch (error) {
-      console.error('[Polling] Error:', error);
+      console.error("[Polling] Error:", error);
       // Don't stop polling on transient errors, let timeout handle it
     }
   };
@@ -460,7 +472,7 @@ export function pollTransactionStatus(
   // Set timeout
   timeoutId = setTimeout(() => {
     cleanup();
-    onError('Transaction timed out');
+    onError("Transaction timed out");
   }, timeoutMs);
 
   return cleanup;
@@ -479,22 +491,22 @@ export function pollTransactionStatus(
  */
 export async function parseCertificateViaProxy(
   proxyEndpoint: string,
-  certificateJson: string
+  certificateJson: string,
 ): Promise<ParseCertificateResponse> {
   // Normalize endpoint (remove trailing slash)
-  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, '');
+  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
 
   // Prepare request body with action routing
   const body: ParseCertificateRequest = {
-    action: 'parse-cert',
+    action: "parse-cert",
     certificate: certificateJson,
   };
 
   try {
     const response = await fetch(normalizedEndpoint, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
     });
@@ -504,20 +516,21 @@ export async function parseCertificateViaProxy(
       let errorMessage: string;
       try {
         const errorBody = await response.json();
-        errorMessage = errorBody.error || errorBody.message || 'Certificate parsing failed';
+        errorMessage =
+          errorBody.error || errorBody.message || "Certificate parsing failed";
       } catch {
-        errorMessage = await response.text() || `HTTP ${response.status}`;
+        errorMessage = (await response.text()) || `HTTP ${response.status}`;
       }
 
       throw new AtsApiException(
         errorMessage,
         ApiErrorCode.CERTIFICATE_PARSE_ERROR,
-        response.status
+        response.status,
       );
     }
 
     // Parse successful response
-    const data = await response.json() as ParseCertificateResponse;
+    const data = (await response.json()) as ParseCertificateResponse;
     return data;
   } catch (error) {
     // Re-throw AtsApiException as-is
@@ -526,34 +539,36 @@ export async function parseCertificateViaProxy(
     }
 
     // Handle network errors
-    if (error instanceof TypeError && error.message.includes('fetch')) {
+    if (error instanceof TypeError && error.message.includes("fetch")) {
       throw new AtsApiException(
-        'Network error: Unable to connect to proxy server',
+        "Network error: Unable to connect to proxy server",
         ApiErrorCode.NETWORK_ERROR,
         undefined,
-        error
+        error,
       );
     }
 
     // Handle other errors
     throw new AtsApiException(
-      error instanceof Error ? error.message : 'Unknown error occurred',
+      error instanceof Error ? error.message : "Unknown error occurred",
       ApiErrorCode.CERTIFICATE_PARSE_ERROR,
       undefined,
-      error
+      error,
     );
   }
 }
 
 /**
- * Health check for the API endpoint
- * Returns true if the API is reachable
+ * Health check for the Component Service
+ * Returns true if the service is reachable
  */
-export async function checkApiHealth(endpoint: string = DEFAULT_API_ENDPOINT): Promise<boolean> {
+export async function checkApiHealth(
+  endpoint: string = COMPONENT_SERVICE_URL,
+): Promise<boolean> {
   try {
-    const normalizedEndpoint = endpoint.replace(/\/+$/, '');
+    const normalizedEndpoint = endpoint.replace(/\/+$/, "");
     const response = await fetch(`${normalizedEndpoint}/health`, {
-      method: 'GET',
+      method: "GET",
     });
     return response.ok;
   } catch {
@@ -570,10 +585,10 @@ export function fileToBase64(file: File): Promise<string> {
     reader.onload = () => {
       const result = reader.result as string;
       // Remove the data URL prefix (e.g., "data:audio/mpeg;base64,")
-      const base64 = result.split(',')[1];
+      const base64 = result.split(",")[1];
       resolve(base64);
     };
-    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.onerror = () => reject(new Error("Failed to read file"));
     reader.readAsDataURL(file);
   });
 }
@@ -597,17 +612,17 @@ export async function registerWorkRaw(
     title: string;
     creators: RawCreatorRequest[];
     file: File;
-  }
+  },
 ): Promise<RegisterWorkRawResponse> {
   // Convert file to base64
   const audio_base64 = await fileToBase64(data.file);
 
   // Normalize endpoint
-  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, '');
+  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
 
   // Prepare request body
   const body: RegisterWorkRawProxyRequest = {
-    action: 'register-raw',
+    action: "register-raw",
     title: data.title,
     creators: data.creators,
     audio_base64,
@@ -616,9 +631,9 @@ export async function registerWorkRaw(
 
   try {
     const response = await fetch(normalizedEndpoint, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
     });
@@ -628,39 +643,40 @@ export async function registerWorkRaw(
       let errorMessage: string;
       try {
         const errorBody = await response.json();
-        errorMessage = errorBody.error || errorBody.message || 'Raw registration failed';
+        errorMessage =
+          errorBody.error || errorBody.message || "Raw registration failed";
       } catch {
-        errorMessage = await response.text() || `HTTP ${response.status}`;
+        errorMessage = (await response.text()) || `HTTP ${response.status}`;
       }
 
       throw new AtsApiException(
         errorMessage,
         ApiErrorCode.PROXY_ERROR,
-        response.status
+        response.status,
       );
     }
 
-    const responseData = await response.json() as RegisterWorkRawResponse;
+    const responseData = (await response.json()) as RegisterWorkRawResponse;
     return responseData;
   } catch (error) {
     if (error instanceof AtsApiException) {
       throw error;
     }
 
-    if (error instanceof TypeError && error.message.includes('fetch')) {
+    if (error instanceof TypeError && error.message.includes("fetch")) {
       throw new AtsApiException(
-        'Network error: Unable to connect to proxy server',
+        "Network error: Unable to connect to proxy server",
         ApiErrorCode.NETWORK_ERROR,
         undefined,
-        error
+        error,
       );
     }
 
     throw new AtsApiException(
-      error instanceof Error ? error.message : 'Unknown error occurred',
+      error instanceof Error ? error.message : "Unknown error occurred",
       ApiErrorCode.PROXY_ERROR,
       undefined,
-      error
+      error,
     );
   }
 }
@@ -675,20 +691,20 @@ export async function registerWorkRaw(
  */
 export async function downloadCertificateViaProxy(
   proxyEndpoint: string,
-  workId: string
+  workId: string,
 ): Promise<DownloadCertificateResponse> {
-  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, '');
+  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
 
   const body: DownloadCertificateRequest = {
-    action: 'download-certificate',
+    action: "download-certificate",
     work_id: workId,
   };
 
   try {
     const response = await fetch(normalizedEndpoint, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
     });
@@ -697,38 +713,39 @@ export async function downloadCertificateViaProxy(
       let errorMessage: string;
       try {
         const errorBody = await response.json();
-        errorMessage = errorBody.error || errorBody.message || 'Certificate download failed';
+        errorMessage =
+          errorBody.error || errorBody.message || "Certificate download failed";
       } catch {
-        errorMessage = await response.text() || `HTTP ${response.status}`;
+        errorMessage = (await response.text()) || `HTTP ${response.status}`;
       }
 
       throw new AtsApiException(
         errorMessage,
         ApiErrorCode.PROXY_ERROR,
-        response.status
+        response.status,
       );
     }
 
-    return await response.json() as DownloadCertificateResponse;
+    return (await response.json()) as DownloadCertificateResponse;
   } catch (error) {
     if (error instanceof AtsApiException) {
       throw error;
     }
 
-    if (error instanceof TypeError && error.message.includes('fetch')) {
+    if (error instanceof TypeError && error.message.includes("fetch")) {
       throw new AtsApiException(
-        'Network error: Unable to connect to proxy server',
+        "Network error: Unable to connect to proxy server",
         ApiErrorCode.NETWORK_ERROR,
         undefined,
-        error
+        error,
       );
     }
 
     throw new AtsApiException(
-      error instanceof Error ? error.message : 'Unknown error occurred',
+      error instanceof Error ? error.message : "Unknown error occurred",
       ApiErrorCode.PROXY_ERROR,
       undefined,
-      error
+      error,
     );
   }
 }

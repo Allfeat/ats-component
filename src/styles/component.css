@@ -758,6 +758,68 @@
   display: none !important;
 }
 
+/* Validation Status (Review Step) */
+.ats-validation {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--ats-radius);
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+
+.ats-validation-pending {
+  background: var(--ats-background-secondary);
+  border: 1px solid var(--ats-border);
+  color: var(--ats-text-secondary);
+}
+
+.ats-validation-success {
+  background: var(--ats-success-light);
+  border: 1px solid var(--ats-success);
+  color: var(--ats-success);
+}
+
+.ats-validation-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--ats-border);
+  border-top-color: var(--ats-primary);
+  border-radius: 50%;
+  animation: ats-spin 0.8s linear infinite;
+}
+
+.ats-validation-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.ats-validation-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.ats-validation-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ats-validation-message {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.ats-validation-fees {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
 /* Protection Choice Cards */
 .ats-choice-grid {
   display: grid;

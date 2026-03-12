@@ -1,12 +1,19 @@
 import {
-  registerWorkRaw,
+  createSession,
+  prepareRegistration,
+  confirmRegistration,
   downloadCertificateViaProxy,
   subscribeToTransaction,
   pollTransactionStatus,
-  DEFAULT_API_ENDPOINT,
-  isValidApiKeyFormat,
+  fileToBase64,
+  DEFAULT_NETWORK,
 } from './api/client';
-import { AtsApiException, RawCreatorRequest, WsStepDetails } from './api/types';
+import {
+  AtsApiException,
+  RawCreatorRequest,
+  WsStepDetails,
+  PrepareRegistrationResponse,
+} from './api/types';
 import { FormState, createDefaultFormState, createEmptyCreator, WorkType } from './form/types';
 import { creatorSchema, isValidAtsFile, parseAtsFileViaApi } from './form/schema';
 import {
@@ -113,6 +120,13 @@ interface ComponentState {
   } | null;
   error: string | null;
   errorStage?: string;
+  // Session management
+  sessionToken: string | null;
+  sessionExpiresAt: number;  // Unix timestamp in ms
+  // Prepare/Confirm flow
+  preparedJob: PrepareRegistrationResponse | null;
+  isAtsValid: boolean;
+  isPreparing: boolean;
 }
 
 /**
@@ -121,31 +135,40 @@ interface ComponentState {
 const DEFAULT_PROXY_ENDPOINT = 'https://ats-webcomponent-test.jad-chahed.workers.dev';
 
 /**
+ * Default Component Service URL for session management
+ */
+const DEFAULT_SERVICE_URL = 'http://localhost:13008';
+
+/**
  * Allfeat ATS Register Custom Element
  *
- * Usage (Proxy Mode - Recommended for B2B):
+ * Usage:
  * ```html
  * <allfeat-ats-register
+ *   site-key="cpk_..."
  *   proxy-endpoint="https://your-org.workers.dev/ats-proxy"
+ *   service-url="https://component-service.example.com"
+ *   primary-color="#4DB8A8"
  * ></allfeat-ats-register>
  * ```
  *
- * Usage (Direct Mode - Legacy):
- * ```html
- * <allfeat-ats-register
- *   api-key="aft_..."
- *   api-endpoint="https://api.allfeat.io"
- * ></allfeat-ats-register>
- * ```
+ * Attributes:
+ * - site-key: Partner site key for session authentication (required)
+ * - proxy-endpoint: Proxy server URL for passphrase injection (required)
+ * - service-url: Component Service URL for session management (optional, default: http://localhost:13008)
+ * - primary-color: Theme accent color (optional, default: #4DB8A8)
  *
- * Proxy mode is recommended for B2B integrations as it keeps
- * API credentials secure on the server side.
+ * The component uses session-based authentication with two-phase registration:
+ * 1. Session created using site-key (via Component Service)
+ * 2. Prepare phase validates work and estimates fees
+ * 3. Confirm phase commits to blockchain
  */
 export class AllfeatAtsRegister extends HTMLElement {
-  static observedAttributes = ['api-key', 'api-endpoint', 'proxy-endpoint', 'lang', 'primary-color'];
+  static observedAttributes = ['site-key', 'proxy-endpoint', 'primary-color', 'service-url'];
 
   private shadow: ShadowRoot;
   private state: ComponentState;
+  private tokenRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     super();
@@ -163,6 +186,13 @@ export class AllfeatAtsRegister extends HTMLElement {
       processingProgress: 0,
       apiResponse: null,
       error: null,
+      // Session management
+      sessionToken: null,
+      sessionExpiresAt: 0,
+      // Prepare/Confirm flow
+      preparedJob: null,
+      isAtsValid: false,
+      isPreparing: false,
     };
   }
 
@@ -187,28 +217,50 @@ export class AllfeatAtsRegister extends HTMLElement {
       this.updatePrimaryColor(this.primaryColor);
     }
 
+    // Initialize session if configured
+    if (this.siteKey && this.proxyEndpoint) {
+      this.initSession();
+    }
+
     // Render initial state
     this.render();
   }
 
   disconnectedCallback() {
-    // Cleanup if needed
+    // Cleanup token refresh timer
+    if (this.tokenRefreshTimer) {
+      clearTimeout(this.tokenRefreshTimer);
+      this.tokenRefreshTimer = null;
+    }
   }
 
   attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
     if (oldValue === newValue) return;
 
     switch (name) {
-      case 'api-key':
-        // Validate API key format
-        if (newValue && !isValidApiKeyFormat(newValue)) {
-          console.warn('Invalid API key format. Expected: aft_<64-hex-chars>');
+      case 'site-key':
+        // Re-initialize session when site-key changes
+        if (newValue && this.proxyEndpoint) {
+          this.initSession();
+        }
+        this.render();
+        break;
+      case 'proxy-endpoint':
+        // Re-initialize session when proxy-endpoint changes
+        if (newValue && this.siteKey) {
+          this.initSession();
         }
         this.render();
         break;
       case 'primary-color':
         // Update CSS custom properties for the new primary color
         this.updatePrimaryColor(newValue || DEFAULT_PRIMARY_COLOR);
+        break;
+      case 'service-url':
+        // Re-initialize session when service-url changes
+        if (this.siteKey && this.proxyEndpoint) {
+          this.initSession();
+        }
         break;
     }
   }
@@ -217,30 +269,34 @@ export class AllfeatAtsRegister extends HTMLElement {
   // Getters
   // ============================================
 
-  get apiKey(): string {
-    return this.getAttribute('api-key') || '';
-  }
-
-  get apiEndpoint(): string {
-    return this.getAttribute('api-endpoint') || DEFAULT_API_ENDPOINT;
+  get siteKey(): string {
+    return this.getAttribute('site-key') || '';
   }
 
   get proxyEndpoint(): string {
     return this.getAttribute('proxy-endpoint') || DEFAULT_PROXY_ENDPOINT;
   }
 
-  /**
-   * Returns true if component is configured to use proxy mode (secure B2B mode)
-   * Proxy mode is used when proxy-endpoint is set OR when no api-key is provided
-   * In proxy mode, credentials are stored server-side, not in the browser
-   */
-  get isProxyMode(): boolean {
-    // Use proxy mode if explicitly set OR if no API key is provided
-    return !!this.getAttribute('proxy-endpoint') || !this.apiKey;
-  }
-
   get primaryColor(): string {
     return this.getAttribute('primary-color') || DEFAULT_PRIMARY_COLOR;
+  }
+
+  get serviceUrl(): string {
+    return this.getAttribute('service-url') || DEFAULT_SERVICE_URL;
+  }
+
+  /**
+   * Returns true if the component is properly configured
+   */
+  get isConfigured(): boolean {
+    return !!this.siteKey && !!this.proxyEndpoint;
+  }
+
+  /**
+   * Returns true if session is active and not expired
+   */
+  get hasValidSession(): boolean {
+    return !!this.state.sessionToken && Date.now() < this.state.sessionExpiresAt;
   }
 
   // ============================================
@@ -262,6 +318,8 @@ export class AllfeatAtsRegister extends HTMLElement {
    * Reset the component to initial state
    */
   reset(): void {
+    // Preserve session state when resetting
+    const { sessionToken, sessionExpiresAt } = this.state;
     this.state = {
       currentStep: 0,
       formState: createDefaultFormState(),
@@ -271,6 +329,13 @@ export class AllfeatAtsRegister extends HTMLElement {
       processingProgress: 0,
       apiResponse: null,
       error: null,
+      // Preserve session
+      sessionToken,
+      sessionExpiresAt,
+      // Reset prepare/confirm state
+      preparedJob: null,
+      isAtsValid: false,
+      isPreparing: false,
     };
     this.render();
   }
@@ -314,6 +379,82 @@ export class AllfeatAtsRegister extends HTMLElement {
   }
 
   // ============================================
+  // Session Management
+  // ============================================
+
+  /**
+   * Initialize session with the Component Service
+   */
+  private async initSession(): Promise<void> {
+    if (!this.siteKey) {
+      console.warn('Cannot initialize session: missing site-key');
+      return;
+    }
+
+    try {
+      const { token, expires_in } = await createSession(this.siteKey, this.serviceUrl);
+      this.state.sessionToken = token;
+      this.state.sessionExpiresAt = Date.now() + (expires_in * 1000);
+
+      // Schedule token refresh before expiry (at 90% of lifetime)
+      this.scheduleTokenRefresh(expires_in * 0.9);
+
+      console.log('[Session] Initialized, expires in', expires_in, 'seconds');
+    } catch (error) {
+      console.error('[Session] Failed to initialize:', error);
+      dispatchError(this, {
+        stage: 'api',
+        error: error instanceof AtsApiException ? error.message : 'Session initialization failed',
+        details: error,
+      });
+    }
+  }
+
+  /**
+   * Schedule token refresh before expiry
+   */
+  private scheduleTokenRefresh(delaySeconds: number): void {
+    // Clear existing timer
+    if (this.tokenRefreshTimer) {
+      clearTimeout(this.tokenRefreshTimer);
+    }
+
+    this.tokenRefreshTimer = setTimeout(() => {
+      this.refreshSession();
+    }, delaySeconds * 1000);
+  }
+
+  /**
+   * Refresh the session token
+   */
+  private async refreshSession(): Promise<void> {
+    try {
+      const { token, expires_in } = await createSession(this.siteKey, this.serviceUrl);
+      this.state.sessionToken = token;
+      this.state.sessionExpiresAt = Date.now() + (expires_in * 1000);
+
+      // Schedule next refresh
+      this.scheduleTokenRefresh(expires_in * 0.9);
+
+      console.log('[Session] Refreshed, expires in', expires_in, 'seconds');
+    } catch (error) {
+      console.error('[Session] Failed to refresh:', error);
+      // Session will expire, but don't interrupt user flow
+      // Next API call will fail with SESSION_EXPIRED
+    }
+  }
+
+  /**
+   * Ensure session is valid, refresh if needed
+   */
+  private async ensureValidSession(): Promise<void> {
+    // Refresh if within 60 seconds of expiry
+    if (Date.now() >= this.state.sessionExpiresAt - 60000) {
+      await this.refreshSession();
+    }
+  }
+
+  // ============================================
   // Rendering
   // ============================================
 
@@ -321,12 +462,12 @@ export class AllfeatAtsRegister extends HTMLElement {
     const container = this.shadow.querySelector('.ats-container');
     if (!container) return;
 
-    // Check configuration: need either proxy-endpoint OR api-key
-    if (!this.isProxyMode && !this.apiKey) {
+    // Check configuration: need both site-key and proxy-endpoint
+    if (!this.isConfigured) {
       container.innerHTML = `
         <div class="ats-alert ats-alert-error">
           <strong>Configuration Error:</strong><br />
-          Please set either <code>proxy-endpoint</code> (recommended) or <code>api-key</code> attribute.
+          Please set both <code>site-key</code> and <code>proxy-endpoint</code> attributes.
         </div>
       `;
       return;
@@ -375,7 +516,12 @@ export class AllfeatAtsRegister extends HTMLElement {
           );
           break;
         case 'review':
-          content += renderReviewStep(this.state.formState);
+          content += renderReviewStep(
+            this.state.formState,
+            this.state.isPreparing,
+            this.state.isAtsValid,
+            this.state.preparedJob
+          );
           break;
         case 'processing':
           content += renderProcessingStep(
@@ -657,12 +803,20 @@ export class AllfeatAtsRegister extends HTMLElement {
 
     this.state.currentStep++;
     this.state.formErrors = {};
-    this.render();
 
     const steps = getFormSteps(this.state.formState.workType);
+    const currentStepId = steps[this.state.currentStep]?.id;
+
+    // Trigger prepare when entering review step
+    if (currentStepId === 'review') {
+      this.handlePrepare();
+    }
+
+    this.render();
+
     dispatchStepChange(this, {
       step: this.state.currentStep,
-      stepName: steps[this.state.currentStep]?.id || 'unknown',
+      stepName: currentStepId || 'unknown',
       totalSteps: steps.length,
     });
   }
@@ -754,19 +908,35 @@ export class AllfeatAtsRegister extends HTMLElement {
     return true;
   }
 
-  private async handleSubmit(): Promise<void> {
-    const { formState } = this.state;
-    const steps = getFormSteps(formState.workType);
+  // ============================================
+  // Prepare/Confirm Flow
+  // ============================================
 
-    // Move to processing step
-    const processingIndex = steps.findIndex(s => s.id === 'processing');
-    this.state.currentStep = processingIndex;
-    this.state.processingStage = 'submit';
-    this.state.processingProgress = 0;
+  /**
+   * Prepare registration (validation phase)
+   * Called when entering the review step
+   */
+  private async handlePrepare(): Promise<void> {
+    const { formState } = this.state;
+
+    // Reset prepare state
+    this.state.isPreparing = true;
+    this.state.isAtsValid = false;
+    this.state.preparedJob = null;
     this.render();
 
     try {
-      // Convert creators to raw format expected by server
+      // Ensure valid session
+      await this.ensureValidSession();
+
+      if (!this.state.sessionToken) {
+        throw new AtsApiException(
+          'Session not available. Please refresh the page.',
+          'SESSION_ERROR' as any
+        );
+      }
+
+      // Convert creators to raw format
       const rawCreators: RawCreatorRequest[] = formState.creators.map((c) => ({
         full_name: c.fullName,
         email: c.email,
@@ -780,26 +950,99 @@ export class AllfeatAtsRegister extends HTMLElement {
         isni: c.isni || undefined,
       }));
 
-      this.updateProgress('submit', 10, 'Uploading file to server...');
+      // Convert file to base64
+      const audio_base64 = await fileToBase64(formState.file!);
+
+      // Call prepare endpoint
+      const prepareResponse = await prepareRegistration(
+        this.proxyEndpoint,
+        this.state.sessionToken,
+        {
+          title: formState.title,
+          creators: rawCreators,
+          audio_base64,
+          filename: formState.file!.name,
+          network: DEFAULT_NETWORK as 'testnet' | 'mainnet',
+        }
+      );
+
+      this.state.preparedJob = prepareResponse;
+      this.state.isAtsValid = true;
+
+      console.log('[Prepare] Success, job_id:', prepareResponse.job_id);
+    } catch (error) {
+      console.error('[Prepare] Error:', error);
+
+      const errorMessage = error instanceof AtsApiException
+        ? error.message
+        : 'Failed to validate your ATS';
+
+      this.state.error = errorMessage;
+      this.state.errorStage = 'validation';
+
+      dispatchError(this, {
+        stage: 'validation',
+        error: errorMessage,
+        details: error,
+      });
+    } finally {
+      this.state.isPreparing = false;
+      this.render();
+    }
+  }
+
+  /**
+   * Confirm registration (commit phase)
+   * Called when user clicks "Create my ATS" button
+   */
+  private async handleSubmit(): Promise<void> {
+    // Verify we have a prepared job
+    if (!this.state.preparedJob || !this.state.isAtsValid) {
+      console.error('[Confirm] No prepared job available');
+      return;
+    }
+
+    const { formState } = this.state;
+    const steps = getFormSteps(formState.workType);
+
+    // Move to processing step
+    const processingIndex = steps.findIndex(s => s.id === 'processing');
+    this.state.currentStep = processingIndex;
+    this.state.processingStage = 'submit';
+    this.state.processingProgress = 0;
+    this.render();
+
+    try {
+      // Ensure valid session
+      await this.ensureValidSession();
+
+      if (!this.state.sessionToken) {
+        throw new AtsApiException(
+          'Session expired. Please refresh the page.',
+          'SESSION_EXPIRED' as any
+        );
+      }
+
+      this.updateProgress('submit', 10, 'Confirming registration...');
 
       // Dispatch event before submission
       dispatchBlockchainSubmitting(this, { commitment: 'server-side' });
 
-      // Call raw registration endpoint (server handles ZKP)
-      const response = await registerWorkRaw(this.proxyEndpoint, {
-        title: formState.title,
-        creators: rawCreators,
-        file: formState.file!,
-      });
+      // Call confirm endpoint
+      const response = await confirmRegistration(
+        this.proxyEndpoint,
+        this.state.sessionToken,
+        this.state.preparedJob.job_id
+      );
 
-      // Always async - track via WebSocket
-      this.updateProgress('blockchain', 30, 'File uploaded, waiting for blockchain confirmation...');
+      // Track via WebSocket
+      this.updateProgress('blockchain', 30, 'Submitting to blockchain...');
 
       await this.waitForTransactionCompletion(response.ws_url, response.status_url);
       // Note: waitForTransactionCompletion handles setting apiResponse and moving to success
 
     } catch (error) {
-      console.error('Submission error:', error);
+      console.error('Confirmation error:', error);
 
       let errorMessage: string;
       let errorStage: string;
