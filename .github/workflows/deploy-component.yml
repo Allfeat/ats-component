@@ -1,0 +1,88 @@
+name: Deploy Component to R2
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'rollup.config.js'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Install dependencies and build
+        run: npm ci && npm run build
+
+      - name: Install AWS CLI
+        run: |
+          curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          sudo ./aws/install --update
+
+      - name: Extract version
+        id: version
+        run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload versioned files to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+          AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+          AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.eu.r2.cloudflarestorage.com
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BUCKET="${{ secrets.R2_BUCKET_NAME }}"
+
+          for file in allfeat-ats-register.iife.js allfeat-ats-register.esm.js; do
+            if [ -f "dist/$file" ]; then
+              aws s3 cp "dist/$file" "s3://$BUCKET/$VERSION/$file" \
+                --endpoint-url "$R2_ENDPOINT" \
+                --region auto \
+                --content-type "application/javascript" \
+                --cache-control "public, max-age=31536000, immutable"
+            fi
+          done
+
+      - name: Upload latest files to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+          AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+          AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.eu.r2.cloudflarestorage.com
+        run: |
+          BUCKET="${{ secrets.R2_BUCKET_NAME }}"
+
+          for file in allfeat-ats-register.iife.js allfeat-ats-register.esm.js; do
+            if [ -f "dist/$file" ]; then
+              aws s3 cp "dist/$file" "s3://$BUCKET/latest/$file" \
+                --endpoint-url "$R2_ENDPOINT" \
+                --region auto \
+                --content-type "application/javascript" \
+                --cache-control "public, max-age=300"
+            fi
+          done
+
+      - name: Summary
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "## Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Version:** \`$VERSION\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### URLs" >> "$GITHUB_STEP_SUMMARY"
+          echo "| File | Versioned | Latest |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-----------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| IIFE | \`https://cdn.allfeat.com/$VERSION/allfeat-ats-register.iife.js\` | \`https://cdn.allfeat.com/latest/allfeat-ats-register.iife.js\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ESM  | \`https://cdn.allfeat.com/$VERSION/allfeat-ats-register.esm.js\`  | \`https://cdn.allfeat.com/latest/allfeat-ats-register.esm.js\`  |" >> "$GITHUB_STEP_SUMMARY"
