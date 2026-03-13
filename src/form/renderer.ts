@@ -392,10 +392,7 @@ function renderValidationStatus(
             <polyline points="20 6 9 17 4 12"/>
           </svg>
         </div>
-        <div class="ats-validation-content">
-          <span class="ats-validation-message">Your ATS is valid and ready to be created</span>
-          <span class="ats-validation-fees">Estimated fees: ${preparedJob.fees.amount} ${preparedJob.fees.currency}</span>
-        </div>
+        <span class="ats-validation-message">Your ATS is valid and ready to be created</span>
       </div>
     `;
   }

@@ -27,13 +27,13 @@ export interface PrepareRegistrationRequest {
 
 /**
  * Response from prepare registration
+ * Note: network_fee_credits is in credits (smallest unit), not formatted currency
  */
 export interface PrepareRegistrationResponse {
   job_id: string;
-  fees: {
-    amount: string;
-    currency: string;
-  };
+  work_id?: string;
+  commitment?: string;
+  network_fee_credits?: number;
   expires_at: string;
 }
 

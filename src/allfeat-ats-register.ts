@@ -1276,6 +1276,7 @@ export class AllfeatAtsRegister extends HTMLElement {
       // Get presigned URL from server
       const { url } = await downloadCertificateViaProxy(
         this.proxyEndpoint,
+        this.state.sessionToken!,
         this.state.apiResponse.workId
       );
 

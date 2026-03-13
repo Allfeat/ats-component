@@ -1,7 +1,7 @@
 use crate::client::BackendClient;
 use crate::error::AppError;
 use axum::{
-    http::{StatusCode, header},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use serde_json::Value;
@@ -14,6 +14,7 @@ use serde_json::Value;
 /// - `work_id`: The work ID to download the certificate for (string)
 pub async fn handle_download_certificate(
     client: &BackendClient,
+    headers: &HeaderMap,
     payload: Value,
 ) -> Result<Response, AppError> {
     // Validate required field
@@ -24,9 +25,14 @@ pub async fn handle_download_certificate(
 
     tracing::info!(work_id = work_id, "Processing download-certificate request");
 
-    // Forward to backend
+    // Extract auth header to forward to backend
+    let auth_header = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok());
+
+    // Forward to backend with auth
     let path = format!("/v1/works/{}/download/certificate", work_id);
-    let (status, body, _duration) = client.get(&path).await?;
+    let (status, body, _duration) = client.get_with_auth(&path, auth_header).await?;
 
     Ok((
         StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),

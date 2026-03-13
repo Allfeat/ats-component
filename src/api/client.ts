@@ -695,12 +695,14 @@ export async function registerWorkRaw(
  * Get presigned URL for certificate download
  *
  * @param proxyEndpoint - The organization's proxy URL
+ * @param sessionToken - Session token from createSession()
  * @param workId - The work UUID (from transaction completion)
  * @returns Presigned URL for certificate ZIP download
  * @throws AtsApiException on any error
  */
 export async function downloadCertificateViaProxy(
   proxyEndpoint: string,
+  sessionToken: string,
   workId: string,
 ): Promise<DownloadCertificateResponse> {
   const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
@@ -715,6 +717,7 @@ export async function downloadCertificateViaProxy(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
       },
       body: JSON.stringify(body),
     });

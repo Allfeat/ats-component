@@ -82,17 +82,35 @@ impl BackendClient {
 
     /// Send a GET request to the backend.
     pub async fn get(&self, path: &str) -> Result<(u16, String, u128), AppError> {
+        self.get_with_auth(path, None).await
+    }
+
+    /// Send a GET request with optional Authorization header forwarding.
+    ///
+    /// This is used for session-based authentication where the client's
+    /// session token needs to be forwarded to the backend.
+    pub async fn get_with_auth(
+        &self,
+        path: &str,
+        auth_header: Option<&str>,
+    ) -> Result<(u16, String, u128), AppError> {
         let url = format!("{}{}", self.config.api_url, path);
         let start = Instant::now();
 
         tracing::info!(url = %url, "GET request to backend");
 
-        let response = self
+        let mut request = self
             .client
             .get(&url)
-            .header("x-api-key", &self.config.api_key)
-            .send()
-            .await?;
+            .header("x-api-key", &self.config.api_key);
+
+        // Forward Authorization header if provided
+        if let Some(auth) = auth_header {
+            request = request.header("Authorization", auth);
+            tracing::debug!("Forwarding Authorization header for GET request");
+        }
+
+        let response = request.send().await?;
 
         let status = response.status().as_u16();
         let body_text = response.text().await.unwrap_or_default();

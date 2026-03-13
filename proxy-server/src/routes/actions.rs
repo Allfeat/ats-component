@@ -39,7 +39,7 @@ pub async fn handle_action(
         // Legacy single-phase registration
         "register-raw" => handlers::handle_register_raw(&client, req.payload).await,
         // Utility actions
-        "download-certificate" => handlers::handle_download_certificate(&client, req.payload).await,
+        "download-certificate" => handlers::handle_download_certificate(&client, &headers, req.payload).await,
         "parse-cert" => handlers::handle_parse_cert(&client, req.payload).await,
         _ => {
             tracing::warn!(action = %req.action, "Unknown action");

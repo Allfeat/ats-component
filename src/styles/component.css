@@ -804,20 +804,9 @@
   height: 20px;
 }
 
-.ats-validation-content {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
 .ats-validation-message {
   font-size: 14px;
   font-weight: 500;
-}
-
-.ats-validation-fees {
-  font-size: 13px;
-  opacity: 0.85;
 }
 
 /* Protection Choice Cards */
