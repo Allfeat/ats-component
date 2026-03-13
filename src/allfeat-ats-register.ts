@@ -818,7 +818,8 @@ export class AllfeatAtsRegister extends HTMLElement {
     }
 
     // Parse the ATS certificate via API (always uses server-side parsing)
-    const result = await parseAtsFileViaApi(file, this.proxyEndpoint);
+    // Pass session token for authentication with the proxy server
+    const result = await parseAtsFileViaApi(file, this.proxyEndpoint, this.state.sessionToken || undefined);
 
     if (!result.success) {
       this.state.formErrors = { ...this.state.formErrors, atsFile: result.error };

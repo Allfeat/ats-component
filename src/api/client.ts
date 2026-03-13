@@ -502,6 +502,7 @@ export function pollTransactionStatus(
 export async function parseCertificateViaProxy(
   proxyEndpoint: string,
   certificateJson: string,
+  sessionToken?: string,
 ): Promise<ParseCertificateResponse> {
   // Normalize endpoint (remove trailing slash)
   const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
@@ -513,11 +514,17 @@ export async function parseCertificateViaProxy(
   };
 
   try {
+    // Build headers with optional Authorization
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (sessionToken) {
+      headers["Authorization"] = `Bearer ${sessionToken}`;
+    }
+
     const response = await fetch(normalizedEndpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(body),
     });
 

@@ -188,7 +188,8 @@ export function isValidAtsFile(file: File): boolean {
  */
 export async function parseAtsFileViaApi(
   file: File,
-  proxyEndpoint: string
+  proxyEndpoint: string,
+  sessionToken?: string,
 ): Promise<{
   success: true;
   data: {
@@ -211,7 +212,7 @@ export async function parseAtsFileViaApi(
     }
 
     // Call API to parse certificate (includes blockchain verification)
-    const response = await parseCertificateViaProxy(proxyEndpoint, certificateJson);
+    const response = await parseCertificateViaProxy(proxyEndpoint, certificateJson, sessionToken);
 
     // Check verification result if present
     if (response.verification) {

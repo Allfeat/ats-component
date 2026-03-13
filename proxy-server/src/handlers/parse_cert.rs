@@ -1,7 +1,7 @@
 use crate::client::BackendClient;
 use crate::error::AppError;
 use axum::{
-    http::{StatusCode, header},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use serde_json::{Value, json};
@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 /// - `certificate`: The certificate string to parse
 pub async fn handle_parse_cert(
     client: &BackendClient,
+    headers: &HeaderMap,
     payload: Value,
 ) -> Result<Response, AppError> {
     // Validate required field
@@ -32,9 +33,17 @@ pub async fn handle_parse_cert(
         "certificate": certificate,
     });
 
+    // Extract Authorization header to forward to backend
+    let auth_header = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+
     // Forward to backend with network query param
     let path = format!("/v1/certificates/parse?network={}", client.network());
-    let (status, body, _duration) = client.post(&path, &request_body).await?;
+    let (status, body, _duration) = client
+        .post_with_auth(&path, &request_body, auth_header.as_deref())
+        .await?;
 
     Ok((
         StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
