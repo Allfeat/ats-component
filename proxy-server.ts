@@ -157,10 +157,10 @@ async function handleParseCert(body: any) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Raw Registration Handler (Server-side ZKP)
+// Registration Handler (Server-side ZKP)
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function handleRegisterRaw(body: any) {
+async function handleRegister(body: any) {
   const { title, creators, audio_base64, filename, network } = body;
 
   // Validate required fields
@@ -196,7 +196,7 @@ async function handleRegisterRaw(body: any) {
     );
   }
 
-  const url = `${env.ALLFEAT_API_URL}/v1/works/raw`;
+  const url = `${env.ALLFEAT_API_URL}/v1/works/register`;
   const headers = {
     "Content-Type": "application/json",
     "x-api-key": env.ALLFEAT_API_KEY,
@@ -234,10 +234,10 @@ async function handleRegisterRaw(body: any) {
     });
   } catch (fetchError: any) {
     const durationMs = Date.now() - startTime;
-    logError(`register-raw after ${durationMs}ms`, fetchError);
+    logError(`register after ${durationMs}ms`, fetchError);
     return Response.json(
       {
-        error: "Failed to connect to raw registration API",
+        error: "Failed to connect to registration API",
         details: fetchError.message,
       },
       { status: 502, headers: corsHeaders },
@@ -417,8 +417,8 @@ Bun.serve({
       logIncoming(request.method, action || "(none)", body);
 
       switch (action) {
-        case "register-raw":
-          return await handleRegisterRaw(body);
+        case "register":
+          return await handleRegister(body);
         case "download-certificate":
           return await handleDownloadCertificate(body);
         case "parse-cert":

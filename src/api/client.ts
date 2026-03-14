@@ -8,9 +8,9 @@ import {
   ParseCertificateResponse,
   PrepareRegistrationRequest,
   PrepareRegistrationResponse,
-  RawCreatorRequest,
-  RegisterWorkRawProxyRequest,
-  RegisterWorkRawResponse,
+  CreatorRequest,
+  RegisterWorkProxyRequest,
+  RegisterWorkResponse,
   SessionResponse,
   TransactionStatusResponse,
   WsMessage,
@@ -110,11 +110,12 @@ export async function createSession(
     if (!response.ok) {
       let errorMessage: string;
       try {
-        const errorBody = await response.json();
+        const text = await response.text();
+        const errorBody = JSON.parse(text);
         errorMessage =
           errorBody.error || errorBody.message || "Session creation failed";
       } catch {
-        errorMessage = (await response.text()) || `HTTP ${response.status}`;
+        errorMessage = `HTTP ${response.status}`;
       }
 
       throw new AtsApiException(
@@ -172,7 +173,7 @@ export async function prepareRegistration(
   const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
 
   const body = {
-    action: "prepare-raw",
+    action: "prepare",
     title: data.title,
     creators: data.creators,
     audio_base64: data.audio_base64,
@@ -193,11 +194,12 @@ export async function prepareRegistration(
     if (!response.ok) {
       let errorMessage: string;
       try {
-        const errorBody = await response.json();
+        const text = await response.text();
+        const errorBody = JSON.parse(text);
         errorMessage =
           errorBody.error || errorBody.message || "Prepare registration failed";
       } catch {
-        errorMessage = (await response.text()) || `HTTP ${response.status}`;
+        errorMessage = `HTTP ${response.status}`;
       }
 
       throw new AtsApiException(
@@ -269,11 +271,12 @@ export async function confirmRegistration(
     if (!response.ok && response.status !== 202) {
       let errorMessage: string;
       try {
-        const errorBody = await response.json();
+        const text = await response.text();
+        const errorBody = JSON.parse(text);
         errorMessage =
           errorBody.error || errorBody.message || "Confirm registration failed";
       } catch {
-        errorMessage = (await response.text()) || `HTTP ${response.status}`;
+        errorMessage = `HTTP ${response.status}`;
       }
 
       throw new AtsApiException(
@@ -532,11 +535,12 @@ export async function parseCertificateViaProxy(
     if (!response.ok) {
       let errorMessage: string;
       try {
-        const errorBody = await response.json();
+        const text = await response.text();
+        const errorBody = JSON.parse(text);
         errorMessage =
           errorBody.error || errorBody.message || "Certificate parsing failed";
       } catch {
-        errorMessage = (await response.text()) || `HTTP ${response.status}`;
+        errorMessage = `HTTP ${response.status}`;
       }
 
       throw new AtsApiException(
@@ -611,9 +615,9 @@ export function fileToBase64(file: File): Promise<string> {
 }
 
 /**
- * Register work via raw endpoint (server-side ZKP)
+ * Register work via proxy (server-side ZKP)
  *
- * This sends the raw file and metadata to the server, which handles:
+ * This sends the file and metadata to the server, which handles:
  * - ZKP computation (hashing, proof generation)
  * - Blockchain submission
  * - Certificate generation
@@ -623,14 +627,14 @@ export function fileToBase64(file: File): Promise<string> {
  * @returns Async response with transaction tracking URLs
  * @throws AtsApiException on any error
  */
-export async function registerWorkRaw(
+export async function registerWork(
   proxyEndpoint: string,
   data: {
     title: string;
-    creators: RawCreatorRequest[];
+    creators: CreatorRequest[];
     file: File;
   },
-): Promise<RegisterWorkRawResponse> {
+): Promise<RegisterWorkResponse> {
   // Convert file to base64
   const audio_base64 = await fileToBase64(data.file);
 
@@ -638,8 +642,8 @@ export async function registerWorkRaw(
   const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
 
   // Prepare request body
-  const body: RegisterWorkRawProxyRequest = {
-    action: "register-raw",
+  const body: RegisterWorkProxyRequest = {
+    action: "register",
     title: data.title,
     creators: data.creators,
     audio_base64,
@@ -659,11 +663,12 @@ export async function registerWorkRaw(
     if (!response.ok && response.status !== 202) {
       let errorMessage: string;
       try {
-        const errorBody = await response.json();
+        const text = await response.text();
+        const errorBody = JSON.parse(text);
         errorMessage =
-          errorBody.error || errorBody.message || "Raw registration failed";
+          errorBody.error || errorBody.message || "Registration failed";
       } catch {
-        errorMessage = (await response.text()) || `HTTP ${response.status}`;
+        errorMessage = `HTTP ${response.status}`;
       }
 
       throw new AtsApiException(
@@ -673,7 +678,7 @@ export async function registerWorkRaw(
       );
     }
 
-    const responseData = (await response.json()) as RegisterWorkRawResponse;
+    const responseData = (await response.json()) as RegisterWorkResponse;
     return responseData;
   } catch (error) {
     if (error instanceof AtsApiException) {
@@ -732,11 +737,12 @@ export async function downloadCertificateViaProxy(
     if (!response.ok) {
       let errorMessage: string;
       try {
-        const errorBody = await response.json();
+        const text = await response.text();
+        const errorBody = JSON.parse(text);
         errorMessage =
           errorBody.error || errorBody.message || "Certificate download failed";
       } catch {
-        errorMessage = (await response.text()) || `HTTP ${response.status}`;
+        errorMessage = `HTTP ${response.status}`;
       }
 
       throw new AtsApiException(

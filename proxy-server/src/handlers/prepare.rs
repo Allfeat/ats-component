@@ -6,10 +6,10 @@ use axum::{
 };
 use serde_json::{Value, json};
 
-/// Handle the `prepare-raw` action.
+/// Handle the `prepare` action.
 ///
 /// Validates the request payload, injects the passphrase from configuration,
-/// and forwards to `POST /v1/works/prepare-raw` with the Authorization header.
+/// and forwards to `POST /v1/works/prepare` with the Authorization header.
 ///
 /// Required fields:
 /// - `title`: Work title (string)
@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 ///
 /// Optional fields:
 /// - `network`: Network to use (defaults to config value)
-pub async fn handle_prepare_raw(
+pub async fn handle_prepare(
     client: &BackendClient,
     headers: &HeaderMap,
     payload: Value,
@@ -76,13 +76,13 @@ pub async fn handle_prepare_raw(
         filename = filename,
         network = network,
         has_auth = auth_header.is_some(),
-        "Processing prepare-raw request"
+        "Processing prepare request"
     );
 
     // Forward to backend with auth header
     let (status, body, _duration) = client
         .post_with_auth(
-            "/v1/works/prepare-raw",
+            "/v1/works/prepare",
             &request_body,
             auth_header.as_deref(),
         )

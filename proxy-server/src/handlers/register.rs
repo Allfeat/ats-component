@@ -6,10 +6,10 @@ use axum::{
 };
 use serde_json::{Value, json};
 
-/// Handle the `register-raw` action.
+/// Handle the `register` action.
 ///
 /// Validates the request payload, injects the passphrase from configuration,
-/// and forwards to `POST /v1/works/raw`.
+/// and forwards to `POST /v1/works/register`.
 ///
 /// Required fields:
 /// - `title`: Work title (string)
@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 ///
 /// Optional fields:
 /// - `network`: Network to use (defaults to config value)
-pub async fn handle_register_raw(
+pub async fn handle_register(
     client: &BackendClient,
     payload: Value,
 ) -> Result<Response, AppError> {
@@ -68,11 +68,11 @@ pub async fn handle_register_raw(
         audio_size = audio_base64.len(),
         filename = filename,
         network = network,
-        "Processing register-raw request"
+        "Processing register request"
     );
 
     // Forward to backend
-    let (status, body, _duration) = client.post("/v1/works/raw", &request_body).await?;
+    let (status, body, _duration) = client.post("/v1/works/register", &request_body).await?;
 
     Ok((
         StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),

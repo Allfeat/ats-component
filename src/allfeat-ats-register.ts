@@ -11,7 +11,7 @@ import {
 import {
   ApiErrorCode,
   AtsApiException,
-  RawCreatorRequest,
+  CreatorRequest,
   WsStepDetails,
   PrepareRegistrationResponse,
 } from './api/types';
@@ -990,8 +990,8 @@ export class AllfeatAtsRegister extends HTMLElement {
         );
       }
 
-      // Convert creators to raw format
-      const rawCreators: RawCreatorRequest[] = formState.creators.map((c) => ({
+      // Convert creators to API format
+      const creators: CreatorRequest[] = formState.creators.map((c) => ({
         full_name: c.fullName,
         email: c.email,
         roles: {
@@ -1013,7 +1013,7 @@ export class AllfeatAtsRegister extends HTMLElement {
         this.state.sessionToken,
         {
           title: formState.title,
-          creators: rawCreators,
+          creators: creators,
           audio_base64,
           filename: formState.file!.name,
           network: DEFAULT_NETWORK as 'testnet' | 'mainnet',

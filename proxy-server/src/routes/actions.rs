@@ -10,7 +10,7 @@ use std::sync::Arc;
 /// Request body for action-based routing.
 #[derive(Deserialize)]
 pub struct ActionRequest {
-    /// The action to perform (register-raw, prepare-raw, confirm, download-certificate, parse-cert)
+    /// The action to perform (register, prepare, confirm, download-certificate, parse-cert)
     pub action: String,
     /// Additional payload fields (flattened)
     #[serde(flatten)]
@@ -20,8 +20,8 @@ pub struct ActionRequest {
 /// Handle POST requests with action-based routing.
 ///
 /// Routes to the appropriate handler based on the `action` field:
-/// - `register-raw` → Register a new work with raw audio (legacy single-phase)
-/// - `prepare-raw` → Prepare registration (validation phase)
+/// - `register` → Register a new work (legacy single-phase)
+/// - `prepare` → Prepare registration (validation phase)
 /// - `confirm` → Confirm registration (commit phase)
 /// - `download-certificate` → Download a certificate for a work
 /// - `parse-cert` → Parse a certificate string
@@ -34,10 +34,10 @@ pub async fn handle_action(
 
     match req.action.as_str() {
         // Two-phase registration flow
-        "prepare-raw" => handlers::handle_prepare_raw(&client, &headers, req.payload).await,
+        "prepare" => handlers::handle_prepare(&client, &headers, req.payload).await,
         "confirm" => handlers::handle_confirm(&client, &headers, req.payload).await,
         // Legacy single-phase registration
-        "register-raw" => handlers::handle_register_raw(&client, req.payload).await,
+        "register" => handlers::handle_register(&client, req.payload).await,
         // Utility actions
         "download-certificate" => handlers::handle_download_certificate(&client, &headers, req.payload).await,
         "parse-cert" => handlers::handle_parse_cert(&client, &headers, req.payload).await,

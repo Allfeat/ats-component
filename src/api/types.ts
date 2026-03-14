@@ -19,7 +19,7 @@ export interface SessionResponse {
  */
 export interface PrepareRegistrationRequest {
   title: string;
-  creators: RawCreatorRequest[];
+  creators: CreatorRequest[];
   audio_base64: string;
   filename: string;
   network?: 'testnet' | 'mainnet';
@@ -126,9 +126,9 @@ export interface WsStepDetails {
 }
 
 /**
- * Creator format for raw registration (matches server)
+ * Creator format for registration (matches server)
  */
-export interface RawCreatorRequest {
+export interface CreatorRequest {
   full_name: string;
   email: string;
   roles: {
@@ -142,21 +142,21 @@ export interface RawCreatorRequest {
 }
 
 /**
- * Raw registration request via proxy (server-side ZKP)
+ * Registration request via proxy (server-side ZKP)
  */
-export interface RegisterWorkRawProxyRequest {
-  action: 'register-raw';
+export interface RegisterWorkProxyRequest {
+  action: 'register';
   network?: 'testnet' | 'mainnet';
   title: string;
-  creators: RawCreatorRequest[];
+  creators: CreatorRequest[];
   audio_base64: string;  // Base64-encoded file
   filename: string;
 }
 
 /**
- * Response from raw registration (always async)
+ * Response from registration (always async)
  */
-export interface RegisterWorkRawResponse {
+export interface RegisterWorkResponse {
   transaction_id: string;
   ws_url: string;
   status_url: string;

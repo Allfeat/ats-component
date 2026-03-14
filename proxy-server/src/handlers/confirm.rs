@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 /// Forwards to `POST /v1/works/confirm` with the Authorization header.
 ///
 /// Required fields:
-/// - `job_id`: The job ID from prepare-raw response (string)
+/// - `job_id`: The job ID from prepare response (string)
 pub async fn handle_confirm(
     client: &BackendClient,
     headers: &HeaderMap,
