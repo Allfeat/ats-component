@@ -1,11 +1,12 @@
 import {
   createSession,
+  initWork,
+  uploadFile,
   prepareRegistration,
   confirmRegistration,
   downloadCertificateViaProxy,
   subscribeToTransaction,
   pollTransactionStatus,
-  fileToBase64,
   DEFAULT_NETWORK,
 } from './api/client';
 import {
@@ -129,6 +130,9 @@ interface ComponentState {
   preparedJob: PrepareRegistrationResponse | null;
   isAtsValid: boolean;
   isPreparing: boolean;
+  // Upload progress
+  uploadProgress: number;
+  isUploading: boolean;
   // Fatal auth error (hides the form)
   fatalAuthError: {
     code: ApiErrorCode;
@@ -200,6 +204,9 @@ export class AllfeatAtsRegister extends HTMLElement {
       preparedJob: null,
       isAtsValid: false,
       isPreparing: false,
+      // Upload progress
+      uploadProgress: 0,
+      isUploading: false,
       // Fatal auth error
       fatalAuthError: null,
     };
@@ -345,6 +352,9 @@ export class AllfeatAtsRegister extends HTMLElement {
       preparedJob: null,
       isAtsValid: false,
       isPreparing: false,
+      // Upload progress
+      uploadProgress: 0,
+      isUploading: false,
       // Preserve fatal auth error (cannot be reset without fixing config)
       fatalAuthError,
     };
@@ -967,7 +977,7 @@ export class AllfeatAtsRegister extends HTMLElement {
   // ============================================
 
   /**
-   * Prepare registration (validation phase)
+   * Prepare registration (init → upload → prepare)
    * Called when entering the review step
    */
   private async handlePrepare(): Promise<void> {
@@ -977,6 +987,8 @@ export class AllfeatAtsRegister extends HTMLElement {
     this.state.isPreparing = true;
     this.state.isAtsValid = false;
     this.state.preparedJob = null;
+    this.state.uploadProgress = 0;
+    this.state.isUploading = false;
     this.render();
 
     try {
@@ -1004,20 +1016,41 @@ export class AllfeatAtsRegister extends HTMLElement {
         isni: c.isni || undefined,
       }));
 
-      // Convert file to base64
-      const audio_base64 = await fileToBase64(formState.file!);
-
-      // Call prepare endpoint
-      const prepareResponse = await prepareRegistration(
+      // Step 1: Init — get presigned upload URL
+      const initResponse = await initWork(
         this.proxyEndpoint,
         this.state.sessionToken,
         {
           title: formState.title,
           creators: creators,
-          audio_base64,
           filename: formState.file!.name,
           network: DEFAULT_NETWORK as 'testnet' | 'mainnet',
         }
+      );
+
+      console.log('[Init] Success, job_id:', initResponse.job_id);
+
+      // Step 2: Upload file directly to S3
+      this.state.isUploading = true;
+      this.render();
+
+      await uploadFile(
+        initResponse.upload_url,
+        formState.file!,
+        (progress) => {
+          this.state.uploadProgress = progress;
+          this.render();
+        }
+      );
+
+      this.state.isUploading = false;
+      console.log('[Upload] Complete');
+
+      // Step 3: Prepare — validate the uploaded work
+      const prepareResponse = await prepareRegistration(
+        this.proxyEndpoint,
+        this.state.sessionToken,
+        initResponse.job_id,
       );
 
       this.state.preparedJob = prepareResponse;
@@ -1041,6 +1074,7 @@ export class AllfeatAtsRegister extends HTMLElement {
       });
     } finally {
       this.state.isPreparing = false;
+      this.state.isUploading = false;
       this.render();
     }
   }

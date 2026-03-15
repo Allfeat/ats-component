@@ -11,18 +11,33 @@ export interface SessionResponse {
 }
 
 // ============================================
-// Prepare/Confirm Registration Types
+// Init / Prepare / Confirm Registration Types
 // ============================================
 
 /**
- * Request payload for prepare registration (validation phase)
+ * Request payload for init (get presigned upload URL)
  */
-export interface PrepareRegistrationRequest {
+export interface InitWorkRequest {
   title: string;
   creators: CreatorRequest[];
-  audio_base64: string;
   filename: string;
   network?: 'testnet' | 'mainnet';
+}
+
+/**
+ * Response from init (presigned upload URL)
+ */
+export interface InitWorkResponse {
+  job_id: string;
+  upload_url: string;
+  upload_expires_at: string;
+}
+
+/**
+ * Request payload for prepare registration (validation phase, after upload)
+ */
+export interface PrepareRegistrationRequest {
+  job_id: string;
 }
 
 /**
@@ -141,26 +156,6 @@ export interface CreatorRequest {
   isni?: string;
 }
 
-/**
- * Registration request via proxy (server-side ZKP)
- */
-export interface RegisterWorkProxyRequest {
-  action: 'register';
-  network?: 'testnet' | 'mainnet';
-  title: string;
-  creators: CreatorRequest[];
-  audio_base64: string;  // Base64-encoded file
-  filename: string;
-}
-
-/**
- * Response from registration (always async)
- */
-export interface RegisterWorkResponse {
-  transaction_id: string;
-  ws_url: string;
-  status_url: string;
-}
 
 /**
  * Download certificate request
@@ -244,7 +239,9 @@ export enum ApiErrorCode {
   SESSION_EXPIRED = 'SESSION_EXPIRED',
   INVALID_SITE_KEY = 'INVALID_SITE_KEY',
   DOMAIN_NOT_REGISTERED = 'DOMAIN_NOT_REGISTERED',
-  // Prepare/Confirm errors
+  // Init/Upload/Prepare/Confirm errors
+  INIT_ERROR = 'INIT_ERROR',
+  UPLOAD_ERROR = 'UPLOAD_ERROR',
   PREPARE_ERROR = 'PREPARE_ERROR',
   CONFIRM_ERROR = 'CONFIRM_ERROR',
   JOB_EXPIRED = 'JOB_EXPIRED',

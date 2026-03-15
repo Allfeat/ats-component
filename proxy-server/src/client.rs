@@ -37,11 +37,6 @@ impl BackendClient {
         format!("{}{}", ws_base, path)
     }
 
-    /// Send a POST request to the backend.
-    pub async fn post(&self, path: &str, body: &Value) -> Result<(u16, String, u128), AppError> {
-        self.post_with_auth(path, body, None).await
-    }
-
     /// Send a POST request with optional Authorization header forwarding.
     ///
     /// This is used for session-based authentication where the client's

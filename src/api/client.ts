@@ -4,13 +4,11 @@ import {
   ConfirmRegistrationResponse,
   DownloadCertificateRequest,
   DownloadCertificateResponse,
+  InitWorkRequest,
+  InitWorkResponse,
   ParseCertificateRequest,
   ParseCertificateResponse,
-  PrepareRegistrationRequest,
   PrepareRegistrationResponse,
-  CreatorRequest,
-  RegisterWorkProxyRequest,
-  RegisterWorkResponse,
   SessionResponse,
   TransactionStatusResponse,
   WsMessage,
@@ -150,35 +148,173 @@ export async function createSession(
 }
 
 // ============================================
-// Two-Phase Registration (Prepare → Confirm)
+// Registration Flow (Init → Upload → Prepare → Confirm)
 // ============================================
 
 /**
- * Prepare registration (validation phase)
+ * Initialize work registration (get presigned upload URL)
  *
- * Sends work data to the proxy for validation and fee estimation.
+ * Sends metadata to the proxy which forwards to the backend.
+ * Returns a presigned S3 URL for direct file upload.
+ *
+ * @param proxyEndpoint - Proxy server URL
+ * @param sessionToken - Session token from createSession()
+ * @param data - Work metadata (title, creators, filename, network)
+ * @returns Job ID and presigned upload URL
+ * @throws AtsApiException on validation or network error
+ */
+export async function initWork(
+  proxyEndpoint: string,
+  sessionToken: string,
+  data: InitWorkRequest,
+): Promise<InitWorkResponse> {
+  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
+
+  const body = {
+    action: "init",
+    title: data.title,
+    creators: data.creators,
+    filename: data.filename,
+    network: data.network || DEFAULT_NETWORK,
+  };
+
+  try {
+    const response = await fetch(normalizedEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      let errorMessage: string;
+      try {
+        const text = await response.text();
+        const errorBody = JSON.parse(text);
+        errorMessage =
+          errorBody.error || errorBody.message || "Init registration failed";
+      } catch {
+        errorMessage = `HTTP ${response.status}`;
+      }
+
+      throw new AtsApiException(
+        errorMessage,
+        ApiErrorCode.INIT_ERROR,
+        response.status,
+      );
+    }
+
+    return (await response.json()) as InitWorkResponse;
+  } catch (error) {
+    if (error instanceof AtsApiException) {
+      throw error;
+    }
+
+    if (error instanceof TypeError && error.message.includes("fetch")) {
+      throw new AtsApiException(
+        "Network error: Unable to connect to proxy server",
+        ApiErrorCode.NETWORK_ERROR,
+        undefined,
+        error,
+      );
+    }
+
+    throw new AtsApiException(
+      error instanceof Error ? error.message : "Unknown error occurred",
+      ApiErrorCode.INIT_ERROR,
+      undefined,
+      error,
+    );
+  }
+}
+
+/**
+ * Upload file directly to S3 via presigned URL
+ *
+ * Uses XMLHttpRequest for upload progress tracking.
+ *
+ * @param uploadUrl - Presigned S3 upload URL from initWork()
+ * @param file - File to upload
+ * @param onProgress - Optional callback for upload progress (0-100)
+ * @throws AtsApiException on upload error
+ */
+export function uploadFile(
+  uploadUrl: string,
+  file: File,
+  onProgress?: (progress: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable && onProgress) {
+        const percent = Math.round((event.loaded / event.total) * 100);
+        onProgress(percent);
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(
+          new AtsApiException(
+            `Upload failed with status ${xhr.status}`,
+            ApiErrorCode.UPLOAD_ERROR,
+            xhr.status,
+          ),
+        );
+      }
+    });
+
+    xhr.addEventListener("error", () => {
+      reject(
+        new AtsApiException(
+          "Network error: Upload failed",
+          ApiErrorCode.UPLOAD_ERROR,
+        ),
+      );
+    });
+
+    xhr.addEventListener("abort", () => {
+      reject(
+        new AtsApiException(
+          "Upload was aborted",
+          ApiErrorCode.UPLOAD_ERROR,
+        ),
+      );
+    });
+
+    xhr.open("PUT", uploadUrl);
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.send(file);
+  });
+}
+
+/**
+ * Prepare registration (validation phase, after upload)
+ *
+ * Validates that the uploaded file is ready for registration.
  * The proxy injects the passphrase and forwards to the ATS service.
  *
  * @param proxyEndpoint - Proxy server URL
  * @param sessionToken - Session token from createSession()
- * @param data - Work registration data
- * @returns Job ID, fees, and expiration for confirmation
+ * @param jobId - Job ID from initWork()
+ * @returns Job validation result with fees and expiration
  * @throws AtsApiException on validation or network error
  */
 export async function prepareRegistration(
   proxyEndpoint: string,
   sessionToken: string,
-  data: PrepareRegistrationRequest,
+  jobId: string,
 ): Promise<PrepareRegistrationResponse> {
   const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
 
   const body = {
     action: "prepare",
-    title: data.title,
-    creators: data.creators,
-    audio_base64: data.audio_base64,
-    filename: data.filename,
-    network: data.network || DEFAULT_NETWORK,
+    job_id: jobId,
   };
 
   try {
@@ -597,111 +733,6 @@ export async function checkApiHealth(
   }
 }
 
-/**
- * Convert a File to base64 encoded string
- */
-export function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Remove the data URL prefix (e.g., "data:audio/mpeg;base64,")
-      const base64 = result.split(",")[1];
-      resolve(base64);
-    };
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.readAsDataURL(file);
-  });
-}
-
-/**
- * Register work via proxy (server-side ZKP)
- *
- * This sends the file and metadata to the server, which handles:
- * - ZKP computation (hashing, proof generation)
- * - Blockchain submission
- * - Certificate generation
- *
- * @param proxyEndpoint - The organization's proxy URL
- * @param data - Work registration data (title, creators, file)
- * @returns Async response with transaction tracking URLs
- * @throws AtsApiException on any error
- */
-export async function registerWork(
-  proxyEndpoint: string,
-  data: {
-    title: string;
-    creators: CreatorRequest[];
-    file: File;
-  },
-): Promise<RegisterWorkResponse> {
-  // Convert file to base64
-  const audio_base64 = await fileToBase64(data.file);
-
-  // Normalize endpoint
-  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
-
-  // Prepare request body
-  const body: RegisterWorkProxyRequest = {
-    action: "register",
-    title: data.title,
-    creators: data.creators,
-    audio_base64,
-    filename: data.file.name,
-  };
-
-  try {
-    const response = await fetch(normalizedEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-
-    // Handle non-OK responses (202 is success for async operations)
-    if (!response.ok && response.status !== 202) {
-      let errorMessage: string;
-      try {
-        const text = await response.text();
-        const errorBody = JSON.parse(text);
-        errorMessage =
-          errorBody.error || errorBody.message || "Registration failed";
-      } catch {
-        errorMessage = `HTTP ${response.status}`;
-      }
-
-      throw new AtsApiException(
-        errorMessage,
-        ApiErrorCode.PROXY_ERROR,
-        response.status,
-      );
-    }
-
-    const responseData = (await response.json()) as RegisterWorkResponse;
-    return responseData;
-  } catch (error) {
-    if (error instanceof AtsApiException) {
-      throw error;
-    }
-
-    if (error instanceof TypeError && error.message.includes("fetch")) {
-      throw new AtsApiException(
-        "Network error: Unable to connect to proxy server",
-        ApiErrorCode.NETWORK_ERROR,
-        undefined,
-        error,
-      );
-    }
-
-    throw new AtsApiException(
-      error instanceof Error ? error.message : "Unknown error occurred",
-      ApiErrorCode.PROXY_ERROR,
-      undefined,
-      error,
-    );
-  }
-}
 
 /**
  * Get presigned URL for certificate download

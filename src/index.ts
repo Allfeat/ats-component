@@ -22,14 +22,15 @@ export { AllfeatAtsRegister } from './allfeat-ats-register';
 export {
   // Session management
   createSession,
-  // Two-phase registration
+  // Registration flow
+  initWork,
+  uploadFile,
   prepareRegistration,
   confirmRegistration,
   // Utilities
   subscribeToTransaction,
   pollTransactionStatus,
   downloadCertificateViaProxy,
-  fileToBase64,
   parseCertificateViaProxy,
   checkApiHealth,
   // Constants
@@ -40,7 +41,9 @@ export {
 export type {
   // Session types
   SessionResponse,
-  // Prepare/Confirm types
+  // Registration flow types
+  InitWorkRequest,
+  InitWorkResponse,
   PrepareRegistrationRequest,
   PrepareRegistrationResponse,
   ConfirmRegistrationResponse,
@@ -51,8 +54,6 @@ export type {
   WsStepDetails,
   TransactionStatusResponse,
   CreatorRequest,
-  RegisterWorkProxyRequest,
-  RegisterWorkResponse,
   DownloadCertificateRequest,
   DownloadCertificateResponse,
   ParseCertificateRequest,
