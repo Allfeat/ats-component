@@ -27,6 +27,21 @@ impl BackendClient {
         &self.config.network
     }
 
+    /// Get the path prefix from the backend API URL.
+    /// e.g. "https://backend.host/ats" → "/ats"
+    /// e.g. "http://localhost:13002" → ""
+    pub fn api_path_prefix(&self) -> &str {
+        // Find the path portion after the host
+        let url = self.config.api_url.trim_end_matches('/');
+        if let Some(pos) = url.find("://") {
+            let after_scheme = &url[pos + 3..];
+            if let Some(slash_pos) = after_scheme.find('/') {
+                return &after_scheme[slash_pos..];
+            }
+        }
+        ""
+    }
+
     /// Build the WebSocket URL for the backend.
     pub fn ws_url(&self, path: &str) -> String {
         let ws_base = self
