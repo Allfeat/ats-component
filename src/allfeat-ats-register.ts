@@ -30,6 +30,8 @@ import {
   renderErrorState,
   renderFatalAuthError,
   getFormSteps,
+  MAX_FILE_SIZE_BYTES,
+  formatFileSize,
 } from './form/renderer';
 import {
   dispatchBlockchainSubmitting,
@@ -805,7 +807,17 @@ export class AllfeatAtsRegister extends HTMLElement {
   // ============================================
 
   private handleFileSelect(file: File): void {
-    // Accept any file type (no validation needed)
+    // Validate file size (50MB limit)
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      this.state.formErrors = {
+        ...this.state.formErrors,
+        file: `File is too large (${formatFileSize(file.size)}). Maximum size is ${formatFileSize(MAX_FILE_SIZE_BYTES)}.`,
+      };
+      this.render();
+      return;
+    }
+
+    // Accept any file type (no type validation needed)
     this.state.formState.file = file;
     this.state.formErrors = {};
     this.render();

@@ -92,9 +92,14 @@ export type StepId =
   | (typeof FORM_STEPS_NEW_VERSION)[number]["id"];
 
 /**
+ * Maximum allowed file size (50MB)
+ */
+export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+
+/**
  * Format file size for display
  */
-function formatFileSize(bytes: number): string {
+export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -485,7 +490,9 @@ export function renderReviewStep(
           <div class="ats-summary-value" style="margin-top: ${index > 0 ? "8px" : "0"}; padding-left: 8px; border-left: 2px solid var(--ats-primary);">
             <strong>${escapeHtml(creator.fullName)}</strong><br />
             ${escapeHtml(creator.email)}<br />
-            <em>${creator.roles.join(", ")}</em>
+            <em>${creator.roles.join(", ")}</em><br />
+            IPI: ${creator.ipi ? escapeHtml(creator.ipi) : "N/A"}<br />
+            ISNI: ${creator.isni ? escapeHtml(creator.isni) : "N/A"}
           </div>
         `,
           )
