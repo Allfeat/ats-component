@@ -35,7 +35,6 @@ export {
   checkApiHealth,
   // Constants
   COMPONENT_SERVICE_URL,
-  DEFAULT_NETWORK,
 } from './api/client';
 
 export type {

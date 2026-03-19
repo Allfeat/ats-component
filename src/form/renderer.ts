@@ -556,26 +556,14 @@ function getDefaultProcessingMessage(stage: string): string {
 }
 
 /**
- * Get the block explorer URL based on network
- */
-function getExplorerUrl(txHash: string, network: 'testnet' | 'mainnet'): string {
-  const rpcUrl = network === 'mainnet'
-    ? 'wss%3A%2F%2Fnode.allfeat.io'
-    : 'wss%3A%2F%2Fnode-dev.allfeat.io';
-  return `https://polkadot.js.org/apps/?rpc=${rpcUrl}#/explorer/query/${txHash}`;
-}
-
-/**
  * Render success step
+ * Note: Explorer URL will be provided by the API in the future
  */
 export function renderSuccessStep(
   _atsId: number,
-  txHash: string,
+  _txHash: string,
   _blockNumber: number,
-  network: 'testnet' | 'mainnet' = 'testnet',
 ): string {
-  const explorerUrl = getExplorerUrl(txHash, network);
-
   return `
     <div class="ats-success-container">
       <div class="ats-success-icon-circle">
@@ -596,14 +584,6 @@ export function renderSuccessStep(
       <div class="ats-success-download-description">
         Download the .ZIP file containing your PDF certificate of anteriority and a JSON file that will allow you to protect multiple versions of the same work if needed. The download includes JSON certificate and PDF files.
       </div>
-      <a href="${explorerUrl}" class="ats-success-transaction-link" target="_blank" rel="noopener noreferrer">
-        View Transaction
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-          <polyline points="15 3 21 3 21 9"/>
-          <line x1="10" y1="14" x2="21" y2="3"/>
-        </svg>
-      </a>
       <div style="margin-top: 24px;">
         <button type="button" class="ats-btn ats-btn-secondary" id="reset-btn">
           Protect another work

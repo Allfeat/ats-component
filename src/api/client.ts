@@ -26,11 +26,6 @@ import {
 export const COMPONENT_SERVICE_URL = "http://localhost:13008";
 
 /**
- * Default network for registration
- */
-export const DEFAULT_NETWORK = "testnet";
-
-/**
  * Parse error message to determine error code
  */
 function parseErrorCode(message: string, httpStatus?: number): ApiErrorCode {
@@ -181,7 +176,6 @@ export async function initRegistration(
     title: data.title,
     creators: data.creators,
     filename: data.filename,
-    network: data.network || DEFAULT_NETWORK,
   };
 
   try {

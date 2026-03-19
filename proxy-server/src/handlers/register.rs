@@ -17,8 +17,7 @@ use serde_json::{Value, json};
 /// - `audio_base64`: Base64-encoded audio data (string)
 /// - `filename`: Original filename (string)
 ///
-/// Optional fields:
-/// - `network`: Network to use (defaults to config value)
+/// The network is always determined by the proxy server configuration.
 pub async fn handle_register(
     client: &BackendClient,
     payload: Value,
@@ -45,11 +44,8 @@ pub async fn handle_register(
         .and_then(Value::as_str)
         .ok_or_else(|| AppError::BadRequest("Missing or invalid filename field".into()))?;
 
-    // Use provided network or default from config
-    let network = payload
-        .get("network")
-        .and_then(Value::as_str)
-        .unwrap_or(client.network());
+    // Always use network from server config (client cannot override)
+    let network = client.network();
 
     // Build request body with injected passphrase
     let request_body = json!({

@@ -16,8 +16,7 @@ use serde_json::{Value, json};
 /// - `creators`: Array of creator objects
 /// - `filename`: Original filename (string)
 ///
-/// Optional fields:
-/// - `network`: Network to use (defaults to config value)
+/// The network is always determined by the proxy server configuration.
 ///
 /// The client should then:
 /// 1. Upload the file directly to S3 using the `upload_url`
@@ -44,11 +43,8 @@ pub async fn handle_init(
         .and_then(Value::as_str)
         .ok_or_else(|| AppError::BadRequest("Missing or invalid filename field".into()))?;
 
-    // Use provided network or default from config
-    let network = payload
-        .get("network")
-        .and_then(Value::as_str)
-        .unwrap_or(client.network());
+    // Always use network from server config (client cannot override)
+    let network = client.network();
 
     tracing::info!(
         title = title,

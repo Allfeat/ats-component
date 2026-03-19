@@ -17,12 +17,12 @@ export interface SessionResponse {
 /**
  * Request payload for init registration (step 1)
  * Initializes the registration and gets a presigned S3 upload URL
+ * Note: Network is controlled server-side via proxy configuration
  */
 export interface InitRegistrationRequest {
   title: string;
   creators: CreatorRequest[];
   filename: string;
-  network?: 'testnet' | 'mainnet';
 }
 
 /**
@@ -160,10 +160,10 @@ export interface CreatorRequest {
 
 /**
  * Registration request via proxy (server-side ZKP)
+ * Note: Network is controlled server-side via proxy configuration
  */
 export interface RegisterWorkProxyRequest {
   action: 'register';
-  network?: 'testnet' | 'mainnet';
   title: string;
   creators: CreatorRequest[];
   audio_base64: string;  // Base64-encoded file

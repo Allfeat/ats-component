@@ -7,7 +7,6 @@ import {
   downloadCertificateViaProxy,
   subscribeToTransaction,
   pollTransactionStatus,
-  DEFAULT_NETWORK,
 } from './api/client';
 import {
   ApiErrorCode,
@@ -591,8 +590,7 @@ export class AllfeatAtsRegister extends HTMLElement {
             content += renderSuccessStep(
               this.state.apiResponse.atsId,
               this.state.apiResponse.txHash,
-              this.state.apiResponse.blockNumber,
-              DEFAULT_NETWORK as 'testnet' | 'mainnet'
+              this.state.apiResponse.blockNumber
             );
           }
           break;
@@ -1022,7 +1020,6 @@ export class AllfeatAtsRegister extends HTMLElement {
           title: formState.title,
           creators: creators,
           filename: formState.file!.name,
-          network: DEFAULT_NETWORK as 'testnet' | 'mainnet',
         }
       );
 
