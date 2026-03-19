@@ -665,7 +665,7 @@
 /* Success State */
 .ats-success-container {
   text-align: center;
-  padding: 32px;
+  padding: 48px 32px;
 }
 
 .ats-success-icon {
@@ -683,27 +683,27 @@
 
 /* Large circular icon for success page (uses primary color) */
 .ats-success-icon-circle {
-  width: 96px;
-  height: 96px;
+  width: 64px;
+  height: 64px;
   background: var(--ats-primary);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 24px;
+  margin: 0 auto 16px;
   color: white;
 }
 
 .ats-success-icon-circle svg {
-  width: 48px;
-  height: 48px;
+  width: 32px;
+  height: 32px;
 }
 
 .ats-success-title {
   font-size: 24px;
   font-weight: 600;
   color: var(--ats-text);
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .ats-success-message {
@@ -713,18 +713,39 @@
 }
 
 .ats-success-message-secondary {
-  font-size: 14px;
-  color: var(--ats-text-muted);
+  font-size: 15px;
+  color: var(--ats-text-secondary);
   margin-bottom: 32px;
 }
 
 .ats-success-download-description {
-  font-size: 13px;
-  color: var(--ats-text-muted);
+  font-size: 14px;
+  color: var(--ats-text-secondary);
+  font-weight: 600;
   line-height: 1.6;
-  max-width: 400px;
+  max-width: 500px;
   margin: 16px auto 24px;
   text-align: center;
+}
+
+.ats-success-transaction-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ats-primary);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  margin-top: 24px;
+}
+
+.ats-success-transaction-link:hover {
+  text-decoration: underline;
+}
+
+.ats-success-transaction-link svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* Alert */

@@ -8,48 +8,48 @@ use serde_json::{Value, json};
 
 /// Handle the `prepare` action.
 ///
-/// Validates the job_id, injects the passphrase from configuration,
-/// and forwards to `POST /v1/works/prepare` with the Authorization header.
+/// Completes the prepare phase of registration by calling the backend
+/// `/v1/works/prepare` endpoint with the job_id.
+///
+/// This should be called after:
+/// 1. Client called `/init` to get job_id and upload_url
+/// 2. Client uploaded the file directly to S3 using upload_url
 ///
 /// Required fields:
-/// - `job_id`: The job ID from init response (string)
+/// - `job_id`: The job ID returned from `/init`
+///
+/// Returns the prepare response containing fees, commitment, and expiration.
 pub async fn handle_prepare(
     client: &BackendClient,
     headers: &HeaderMap,
     payload: Value,
 ) -> Result<Response, AppError> {
-    // Validate required field
+    // Extract job_id (only required field now)
     let job_id = payload
         .get("job_id")
         .and_then(Value::as_str)
         .ok_or_else(|| AppError::BadRequest("Missing or invalid job_id field".into()))?;
 
-    // Extract Authorization header to forward
+    tracing::info!(job_id = job_id, "Handling prepare request");
+
+    // Build prepare request body with passphrase
+    let prepare_body = json!({
+        "job_id": job_id,
+        "passphrase": client.passphrase(),
+    });
+
+    // Extract Authorization header to forward to backend
     let auth_header = headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .map(String::from);
 
-    // Build request body with injected passphrase
-    let request_body = json!({
-        "job_id": job_id,
-        "passphrase": client.passphrase(),
-    });
-
-    tracing::info!(
-        job_id = job_id,
-        has_auth = auth_header.is_some(),
-        "Processing prepare request"
-    );
-
-    // Forward to backend with auth header
+    // Call backend prepare endpoint with auth header forwarded
     let (status, body, _duration) = client
-        .post_with_auth(
-            "/v1/works/prepare",
-            &request_body,
-            auth_header.as_deref(),
-        )
+        .post_with_auth("/v1/works/prepare", &prepare_body, auth_header.as_deref())
         .await?;
+
+    tracing::info!(status = status, job_id = job_id, "Prepare request completed");
 
     Ok((
         StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),

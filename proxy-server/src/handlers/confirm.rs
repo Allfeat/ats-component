@@ -53,26 +53,6 @@ pub async fn handle_confirm(
         StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
     };
 
-    // Strip the backend API path prefix from ws_url and status_url
-    // so they match the proxy's own routes (/v1/transactions/{id}, not /ats/v1/transactions/{id})
-    let prefix = client.api_path_prefix();
-    let body = if !prefix.is_empty() {
-        if let Ok(mut json) = serde_json::from_str::<Value>(&body) {
-            for key in &["ws_url", "status_url"] {
-                if let Some(val) = json.get(*key).and_then(Value::as_str) {
-                    if let Some(stripped) = val.strip_prefix(prefix) {
-                        json[*key] = Value::String(stripped.to_string());
-                    }
-                }
-            }
-            json.to_string()
-        } else {
-            body
-        }
-    } else {
-        body
-    };
-
     Ok((
         response_status,
         [(header::CONTENT_TYPE, "application/json")],

@@ -1,7 +1,7 @@
-import type { FormState, CreatorFormData, WorkType } from './types';
-import type { PrepareRegistrationResponse } from '../api/types';
-import { ApiErrorCode } from '../api/types';
-import { CREATOR_ROLES } from './types';
+import type { PrepareRegistrationResponse } from "../api/types";
+import { ApiErrorCode } from "../api/types";
+import type { CreatorFormData, FormState, WorkType } from "./types";
+import { CREATOR_ROLES } from "./types";
 
 /**
  * Lucide SVG icons (inline for zero dependencies)
@@ -35,12 +35,18 @@ const LUCIDE_ICONS = {
  */
 function getStepIcon(stepId: string): string {
   switch (stepId) {
-    case 'choice': return LUCIDE_ICONS.fileText;
-    case 'file': return LUCIDE_ICONS.upload;
-    case 'title': return LUCIDE_ICONS.fileText;
-    case 'creators': return LUCIDE_ICONS.users;
-    case 'review': return LUCIDE_ICONS.clipboardList;
-    default: return '';
+    case "choice":
+      return LUCIDE_ICONS.fileText;
+    case "file":
+      return LUCIDE_ICONS.upload;
+    case "title":
+      return LUCIDE_ICONS.fileText;
+    case "creators":
+      return LUCIDE_ICONS.users;
+    case "review":
+      return LUCIDE_ICONS.clipboardList;
+    default:
+      return "";
   }
 }
 
@@ -49,13 +55,13 @@ function getStepIcon(stepId: string): string {
  * choice -> file -> title -> creators -> review -> processing -> success
  */
 export const FORM_STEPS_NEW_WORK = [
-  { id: 'choice', label: 'Protection Choice' },
-  { id: 'file', label: 'File Selection' },
-  { id: 'title', label: 'Title of the work' },
-  { id: 'creators', label: 'Creators' },
-  { id: 'review', label: 'Summary' },
-  { id: 'processing', label: 'Process' },
-  { id: 'success', label: 'Done' },
+  { id: "choice", label: "Protection Choice" },
+  { id: "file", label: "File Selection" },
+  { id: "title", label: "Title of the work" },
+  { id: "creators", label: "Creators" },
+  { id: "review", label: "Summary" },
+  { id: "processing", label: "Process" },
+  { id: "success", label: "Done" },
 ] as const;
 
 /**
@@ -63,25 +69,27 @@ export const FORM_STEPS_NEW_WORK = [
  * choice -> file (with ATS) -> creators -> review -> processing -> success
  */
 export const FORM_STEPS_NEW_VERSION = [
-  { id: 'choice', label: 'Protection Choice' },
-  { id: 'file', label: 'File Selection' },
-  { id: 'creators', label: 'Creators' },
-  { id: 'review', label: 'Summary' },
-  { id: 'processing', label: 'Process' },
-  { id: 'success', label: 'Done' },
+  { id: "choice", label: "Protection Choice" },
+  { id: "file", label: "File Selection" },
+  { id: "creators", label: "Creators" },
+  { id: "review", label: "Summary" },
+  { id: "processing", label: "Process" },
+  { id: "success", label: "Done" },
 ] as const;
 
 /**
  * Get form steps based on work type
  */
 export function getFormSteps(workType: WorkType) {
-  return workType === 'version' ? FORM_STEPS_NEW_VERSION : FORM_STEPS_NEW_WORK;
+  return workType === "version" ? FORM_STEPS_NEW_VERSION : FORM_STEPS_NEW_WORK;
 }
 
 // For backward compatibility, default to new work steps
 export const FORM_STEPS = FORM_STEPS_NEW_WORK;
 
-export type StepId = typeof FORM_STEPS_NEW_WORK[number]['id'] | typeof FORM_STEPS_NEW_VERSION[number]['id'];
+export type StepId =
+  | (typeof FORM_STEPS_NEW_WORK)[number]["id"]
+  | (typeof FORM_STEPS_NEW_VERSION)[number]["id"];
 
 /**
  * Format file size for display
@@ -95,19 +103,26 @@ function formatFileSize(bytes: number): string {
 /**
  * Render the step indicator
  */
-export function renderStepIndicator(currentStep: number, workType: WorkType = null): string {
+export function renderStepIndicator(
+  currentStep: number,
+  workType: WorkType = null,
+): string {
   const steps = getFormSteps(workType);
   // Show steps except 'processing' and 'success' (last 2)
   const visibleSteps = steps.slice(0, -2);
 
   return `
     <div class="ats-steps">
-      ${visibleSteps.map((step, index) => `
-        <div class="ats-step ${index < currentStep ? 'completed' : ''} ${index === currentStep ? 'active' : ''}">
-          <div class="ats-step-number">${index < currentStep ? '✓' : getStepIcon(step.id)}</div>
+      ${visibleSteps
+        .map(
+          (step, index) => `
+        <div class="ats-step ${index < currentStep ? "completed" : ""} ${index === currentStep ? "active" : ""}">
+          <div class="ats-step-number">${index < currentStep ? "✓" : getStepIcon(step.id)}</div>
           <div class="ats-step-label">${step.label}</div>
         </div>
-      `).join('')}
+      `,
+        )
+        .join("")}
     </div>
   `;
 }
@@ -116,13 +131,13 @@ export function renderStepIndicator(currentStep: number, workType: WorkType = nu
  * Render protection choice step (New Work vs New Version)
  */
 export function renderProtectionChoiceStep(workType: WorkType): string {
-  const isNewSelected = workType === 'new';
-  const isVersionSelected = workType === 'version';
+  const isNewSelected = workType === "new";
+  const isVersionSelected = workType === "version";
 
   return `
-    <div class="ats-section-title">Protection Choice</div>
+    <div class="ats-section-title ats-section-title-centered">Protection Choice</div>
     <div class="ats-choice-grid">
-      <div class="ats-choice-card ${isNewSelected ? 'selected' : ''}" data-choice="new">
+      <div class="ats-choice-card ${isNewSelected ? "selected" : ""}" data-choice="new">
         <div class="ats-choice-icon">
           ${LUCIDE_ICONS.plus}
         </div>
@@ -136,7 +151,7 @@ export function renderProtectionChoiceStep(workType: WorkType): string {
           ${isNewSelected ? LUCIDE_ICONS.checkCircle : LUCIDE_ICONS.circle}
         </div>
       </div>
-      <div class="ats-choice-card ${isVersionSelected ? 'selected' : ''}" data-choice="version">
+      <div class="ats-choice-card ${isVersionSelected ? "selected" : ""}" data-choice="version">
         <div class="ats-choice-icon">
           ${LUCIDE_ICONS.refreshCw}
         </div>
@@ -152,7 +167,7 @@ export function renderProtectionChoiceStep(workType: WorkType): string {
       </div>
     </div>
     <div class="ats-btn-group ats-btn-group-right">
-      <button type="button" class="ats-btn ats-btn-primary" id="next-btn" ${!workType ? 'disabled' : ''}>
+      <button type="button" class="ats-btn ats-btn-primary" id="next-btn" ${!workType ? "disabled" : ""}>
         Continue
         ${LUCIDE_ICONS.arrowRight}
       </button>
@@ -163,53 +178,68 @@ export function renderProtectionChoiceStep(workType: WorkType): string {
 /**
  * Render file upload step
  */
-export function renderFileStep(state: FormState, errors: { file?: string; atsFile?: string } = {}): string {
+export function renderFileStep(
+  state: FormState,
+  errors: { file?: string; atsFile?: string } = {},
+): string {
   const hasFile = state.file !== null;
   const hasAtsFile = state.atsFile !== null;
-  const isVersionFlow = state.workType === 'version';
+  const isVersionFlow = state.workType === "version";
 
   // For version flow, require both files; for new work, only asset file
-  const canContinue = isVersionFlow ? (hasFile && hasAtsFile) : hasFile;
+  const canContinue = isVersionFlow ? hasFile && hasAtsFile : hasFile;
 
   return `
     <div class="ats-section-title ats-section-title-centered">File Selection</div>
-    <div class="ats-file-drop ${hasFile ? 'has-file' : ''}" id="file-drop-zone">
+    <div class="ats-file-drop ${hasFile ? "has-file" : ""}" id="file-drop-zone">
       <div class="ats-file-drop-icon">${LUCIDE_ICONS.upload}</div>
-      ${hasFile && state.file ? `
+      ${
+        hasFile && state.file
+          ? `
         <div class="ats-file-drop-filename">${state.file.name}</div>
         <div class="ats-file-drop-size">${formatFileSize(state.file.size)}</div>
         <button type="button" class="ats-btn ats-btn-outline-destructive" id="remove-file">Remove File</button>
-      ` : `
+      `
+          : `
         <div class="ats-file-drop-text"><strong>Drag & drop or select your file</strong></div>
-      `}
+      `
+      }
       <input type="file" id="file-input" class="ats-hidden" />
     </div>
     <div class="ats-file-help-text">All file types are accepted.</div>
-    ${errors.file ? `<div class="ats-error-message">${errors.file}</div>` : ''}
+    ${errors.file ? `<div class="ats-error-message">${errors.file}</div>` : ""}
 
-    ${isVersionFlow ? `
+    ${
+      isVersionFlow
+        ? `
       <div class="ats-section-title ats-section-title-centered" style="margin-top: 24px;">ATS Certificate</div>
-      <div class="ats-file-drop ${hasAtsFile ? 'has-file' : ''}" id="ats-file-drop-zone">
+      <div class="ats-file-drop ${hasAtsFile ? "has-file" : ""}" id="ats-file-drop-zone">
         <div class="ats-file-drop-icon">${LUCIDE_ICONS.upload}</div>
-        ${hasAtsFile && state.atsFile ? `
+        ${
+          hasAtsFile && state.atsFile
+            ? `
           <div class="ats-file-drop-filename">${state.atsFile.name}</div>
           <div class="ats-file-drop-size">${formatFileSize(state.atsFile.size)}</div>
           <button type="button" class="ats-btn ats-btn-outline-destructive" id="remove-ats-file">Remove File</button>
-        ` : `
+        `
+            : `
           <div class="ats-file-drop-text"><strong>Drag & drop or select your file</strong></div>
-        `}
+        `
+        }
         <input type="file" id="ats-file-input" accept=".json,application/json" class="ats-hidden" />
       </div>
       <div class="ats-file-help-text">JSON files only (.json)</div>
-      ${errors.atsFile ? `<div class="ats-error-message">${errors.atsFile}</div>` : ''}
-    ` : ''}
+      ${errors.atsFile ? `<div class="ats-error-message">${errors.atsFile}</div>` : ""}
+    `
+        : ""
+    }
 
     <div class="ats-btn-group ats-btn-group-center">
       <button type="button" class="ats-btn ats-btn-secondary" id="back-btn">
         ${LUCIDE_ICONS.arrowLeft}
         Back
       </button>
-      <button type="button" class="ats-btn ats-btn-primary" id="next-btn" ${!canContinue ? 'disabled' : ''}>
+      <button type="button" class="ats-btn ats-btn-primary" id="next-btn" ${!canContinue ? "disabled" : ""}>
         Next
         ${LUCIDE_ICONS.arrowRight}
       </button>
@@ -220,20 +250,23 @@ export function renderFileStep(state: FormState, errors: { file?: string; atsFil
 /**
  * Render work title step (renamed from details, ISWC removed)
  */
-export function renderTitleStep(state: FormState, errors: Record<string, string> = {}): string {
+export function renderTitleStep(
+  state: FormState,
+  errors: Record<string, string> = {},
+): string {
   return `
-    <div class="ats-section-title">Title of the Work</div>
+    <div class="ats-section-title ats-section-title-centered">Title of the Work</div>
     <div class="ats-form-group">
       <label class="ats-label ats-label-required" for="title">Title</label>
       <input
         type="text"
         id="title"
-        class="ats-input ${errors.title ? 'error' : ''}"
+        class="ats-input ${errors.title ? "error" : ""}"
         placeholder="Enter the title of your work"
         value="${escapeHtml(state.title)}"
         maxlength="255"
       />
-${errors.title ? `<div class="ats-error-message">${errors.title}</div>` : ''}
+${errors.title ? `<div class="ats-error-message">${errors.title}</div>` : ""}
     </div>
     <div class="ats-btn-group ats-btn-group-between">
       <button type="button" class="ats-btn ats-btn-secondary" id="back-btn">Back</button>
@@ -248,7 +281,12 @@ export const renderDetailsStep = renderTitleStep;
 /**
  * Render a single creator form
  */
-function renderCreatorForm(creator: CreatorFormData, index: number, creatorsCount: number, errors: Record<string, string> = {}): string {
+function renderCreatorForm(
+  creator: CreatorFormData,
+  index: number,
+  creatorsCount: number,
+  errors: Record<string, string> = {},
+): string {
   const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
   return `
@@ -258,47 +296,49 @@ function renderCreatorForm(creator: CreatorFormData, index: number, creatorsCoun
           <label class="ats-label ats-label-required">Full name</label>
           <input
             type="text"
-            class="ats-input creator-fullname ${errors.fullName ? 'error' : ''}"
+            class="ats-input creator-fullname ${errors.fullName ? "error" : ""}"
             data-index="${index}"
             placeholder="Enter full name"
             value="${escapeHtml(creator.fullName)}"
             maxlength="255"
           />
-          ${errors.fullName ? `<div class="ats-error-message">${errors.fullName}</div>` : ''}
+          ${errors.fullName ? `<div class="ats-error-message">${errors.fullName}</div>` : ""}
         </div>
 
         <div class="ats-form-group">
           <label class="ats-label ats-label-required">Email</label>
           <input
             type="email"
-            class="ats-input creator-email ${errors.email ? 'error' : ''}"
+            class="ats-input creator-email ${errors.email ? "error" : ""}"
             data-index="${index}"
             placeholder="Enter email address"
             value="${escapeHtml(creator.email)}"
             maxlength="255"
           />
-          ${errors.email ? `<div class="ats-error-message">${errors.email}</div>` : ''}
+          ${errors.email ? `<div class="ats-error-message">${errors.email}</div>` : ""}
         </div>
       </div>
 
       <div class="ats-form-group" style="margin-top: 16px;">
         <label class="ats-label ats-label-required">Roles</label>
         <div class="ats-checkbox-group">
-          ${CREATOR_ROLES.map(role => `
-            <label class="ats-role-badge ${creator.roles.includes(role) ? 'selected' : ''}">
+          ${CREATOR_ROLES.map(
+            (role) => `
+            <label class="ats-role-badge ${creator.roles.includes(role) ? "selected" : ""}">
               <input
                 type="checkbox"
                 class="creator-role"
                 data-index="${index}"
                 value="${role}"
-                ${creator.roles.includes(role) ? 'checked' : ''}
+                ${creator.roles.includes(role) ? "checked" : ""}
               />
-              ${creator.roles.includes(role) ? `<span class="ats-role-check">${checkIcon}</span>` : ''}
+              ${creator.roles.includes(role) ? `<span class="ats-role-check">${checkIcon}</span>` : ""}
               ${role}
             </label>
-          `).join('')}
+          `,
+          ).join("")}
         </div>
-        ${errors.roles ? `<div class="ats-error-message">${errors.roles}</div>` : ''}
+        ${errors.roles ? `<div class="ats-error-message">${errors.roles}</div>` : ""}
       </div>
 
       <hr class="ats-creator-divider" />
@@ -310,38 +350,42 @@ function renderCreatorForm(creator: CreatorFormData, index: number, creatorsCoun
           <label class="ats-label">IPI (optional)</label>
           <input
             type="text"
-            class="ats-input creator-ipi ${errors.ipi ? 'error' : ''}"
+            class="ats-input creator-ipi ${errors.ipi ? "error" : ""}"
             data-index="${index}"
             value="${escapeHtml(creator.ipi)}"
             maxlength="11"
             inputmode="numeric"
             pattern="[0-9]*"
           />
-          <div class="ats-help-text">Format: 1-11 digits (IPI Code or ISNI required)</div>
-          ${errors.ipi ? `<div class="ats-error-message">${errors.ipi}</div>` : ''}
+          <div class="ats-help-text">Format: 1-11 digits</div>
+          ${errors.ipi ? `<div class="ats-error-message">${errors.ipi}</div>` : ""}
         </div>
 
         <div class="ats-form-group">
           <label class="ats-label">ISNI (optional)</label>
           <input
             type="text"
-            class="ats-input creator-isni ${errors.isni ? 'error' : ''}"
+            class="ats-input creator-isni ${errors.isni ? "error" : ""}"
             data-index="${index}"
             value="${escapeHtml(creator.isni)}"
             maxlength="16"
           />
-          <div class="ats-help-text">Format: 16 characters: 15 digits and one digit or X (IPI Code or ISNI required)</div>
-          ${errors.isni ? `<div class="ats-error-message">${errors.isni}</div>` : ''}
+          <div class="ats-help-text">Format: 16 characters: 15 digits and one digit or X</div>
+          ${errors.isni ? `<div class="ats-error-message">${errors.isni}</div>` : ""}
         </div>
       </div>
 
-      ${creatorsCount > 1 ? `
+      ${
+        creatorsCount > 1
+          ? `
         <div class="ats-creator-remove-container">
           <button type="button" class="ats-btn ats-btn-outline-destructive remove-creator" style="width: 100%;" data-index="${index}">
             Remove
           </button>
         </div>
-      ` : ''}
+      `
+          : ""
+      }
     </div>
   `;
 }
@@ -349,17 +393,24 @@ function renderCreatorForm(creator: CreatorFormData, index: number, creatorsCoun
 /**
  * Render creators step
  */
-export function renderCreatorsStep(state: FormState, errors: Record<string, Record<string, string>> = {}): string {
+export function renderCreatorsStep(
+  state: FormState,
+  errors: Record<string, Record<string, string>> = {},
+): string {
   return `
-    <div class="ats-section-title">Creators</div>
+    <div class="ats-section-title ats-section-title-centered">Creators</div>
     <div class="ats-creators-list">
-      ${state.creators.map((creator, index) => renderCreatorForm(creator, index, state.creators.length, errors[index] || {})).join('')}
+      ${state.creators.map((creator, index) => renderCreatorForm(creator, index, state.creators.length, errors[index] || {})).join("")}
     </div>
-    ${state.creators.length < 20 ? `
+    ${
+      state.creators.length < 20
+        ? `
       <button type="button" class="ats-btn ats-btn-outline-primary" id="add-creator" style="margin-top: 16px;">
         Add Creator (${state.creators.length}/20)
       </button>
-    ` : ''}
+    `
+        : ""
+    }
     <div class="ats-btn-group ats-btn-group-between">
       <button type="button" class="ats-btn ats-btn-secondary" id="back-btn">Back</button>
       <button type="button" class="ats-btn ats-btn-primary" id="next-btn">Continue</button>
@@ -373,13 +424,13 @@ export function renderCreatorsStep(state: FormState, errors: Record<string, Reco
 function renderValidationStatus(
   isPreparing: boolean,
   isAtsValid: boolean,
-  preparedJob: PrepareRegistrationResponse | null
+  preparedJob: PrepareRegistrationResponse | null,
 ): string {
   if (isPreparing) {
     return `
       <div class="ats-validation ats-validation-pending">
         <div class="ats-validation-spinner"></div>
-        <span>Validating your ATS...</span>
+        <span>Validating your work...</span>
       </div>
     `;
   }
@@ -392,12 +443,12 @@ function renderValidationStatus(
             <polyline points="20 6 9 17 4 12"/>
           </svg>
         </div>
-        <span class="ats-validation-message">Your ATS is valid and ready to be created</span>
+        <span class="ats-validation-message">Your work is valid and ready to be protected</span>
       </div>
     `;
   }
 
-  return '';
+  return "";
 }
 
 /**
@@ -407,20 +458,20 @@ export function renderReviewStep(
   state: FormState,
   isPreparing: boolean = false,
   isAtsValid: boolean = false,
-  preparedJob: PrepareRegistrationResponse | null = null
+  preparedJob: PrepareRegistrationResponse | null = null,
 ): string {
   const versionInfo = state.parsedAtsData
     ? ` (Version ${state.parsedAtsData.versionNumber})`
-    : '';
+    : "";
 
   const canSubmit = isAtsValid && preparedJob && !isPreparing;
 
   return `
-    <div class="ats-section-title">Review Your Submission</div>
+    <div class="ats-section-title ats-section-title-centered">Review Your Submission</div>
     <div class="ats-summary">
       <div class="ats-summary-section">
         <div class="ats-summary-label">Asset File</div>
-        <div class="ats-summary-value">${state.file?.name || 'No file selected'}</div>
+        <div class="ats-summary-value">${state.file?.name || "No file selected"}</div>
       </div>
       <div class="ats-summary-section">
         <div class="ats-summary-label">Title${versionInfo}</div>
@@ -428,13 +479,17 @@ export function renderReviewStep(
       </div>
       <div class="ats-summary-section">
         <div class="ats-summary-label">Creators (${state.creators.length})</div>
-        ${state.creators.map((creator, index) => `
-          <div class="ats-summary-value" style="margin-top: ${index > 0 ? '8px' : '0'}; padding-left: 8px; border-left: 2px solid var(--ats-primary);">
+        ${state.creators
+          .map(
+            (creator, index) => `
+          <div class="ats-summary-value" style="margin-top: ${index > 0 ? "8px" : "0"}; padding-left: 8px; border-left: 2px solid var(--ats-primary);">
             <strong>${escapeHtml(creator.fullName)}</strong><br />
             ${escapeHtml(creator.email)}<br />
-            <em>${creator.roles.join(', ')}</em>
+            <em>${creator.roles.join(", ")}</em>
           </div>
-        `).join('')}
+        `,
+          )
+          .join("")}
       </div>
     </div>
 
@@ -442,8 +497,8 @@ export function renderReviewStep(
 
     <div class="ats-btn-group ats-btn-group-between">
       <button type="button" class="ats-btn ats-btn-secondary" id="back-btn">Back</button>
-      <button type="button" class="ats-btn ats-btn-primary ats-btn-lg" id="submit-btn" ${!canSubmit ? 'disabled' : ''}>
-        Create my ATS
+      <button type="button" class="ats-btn ats-btn-primary ats-btn-lg" id="submit-btn" ${!canSubmit ? "disabled" : ""}>
+        Protect my work
       </button>
     </div>
   `;
@@ -452,9 +507,13 @@ export function renderReviewStep(
 /**
  * Render processing step
  */
-export function renderProcessingStep(stage: string, progress: number, message?: string): string {
+export function renderProcessingStep(
+  stage: string,
+  progress: number,
+  message?: string,
+): string {
   return `
-    <div class="ats-section-title">Processing Your Submission</div>
+    <div class="ats-section-title ats-section-title-centered">Processing Your Submission</div>
     <div style="text-align: center; padding: 32px 0;">
       <div class="ats-spinner" style="width: 48px; height: 48px; border-width: 4px; margin: 0 auto 24px;"></div>
       <div class="ats-progress" style="max-width: 300px; margin: 0 auto;">
@@ -473,29 +532,46 @@ export function renderProcessingStep(stage: string, progress: number, message?: 
  */
 function getDefaultProcessingMessage(stage: string): string {
   switch (stage) {
-    case 'bundle':
-      return 'Computing cryptographic hashes...';
-    case 'proof':
-      return 'Generating zero-knowledge proof...';
-    case 'verify':
-      return 'Verifying proof...';
-    case 'submit':
-      return 'Submitting to blockchain...';
-    case 'certificate':
-      return 'Generating certificate...';
+    case "bundle":
+      return "Computing cryptographic hashes...";
+    case "proof":
+      return "Generating zero-knowledge proof...";
+    case "verify":
+      return "Verifying proof...";
+    case "submit":
+      return "Submitting to blockchain...";
+    case "certificate":
+      return "Generating certificate...";
     default:
-      return 'Processing...';
+      return "Processing...";
   }
+}
+
+/**
+ * Get the block explorer URL based on network
+ */
+function getExplorerUrl(txHash: string, network: 'testnet' | 'mainnet'): string {
+  const rpcUrl = network === 'mainnet'
+    ? 'wss%3A%2F%2Fnode.allfeat.io'
+    : 'wss%3A%2F%2Fnode-dev.allfeat.io';
+  return `https://polkadot.js.org/apps/?rpc=${rpcUrl}#/explorer/query/${txHash}`;
 }
 
 /**
  * Render success step
  */
-export function renderSuccessStep(_atsId: number, _txHash: string, _blockNumber: number): string {
+export function renderSuccessStep(
+  _atsId: number,
+  txHash: string,
+  _blockNumber: number,
+  network: 'testnet' | 'mainnet' = 'testnet',
+): string {
+  const explorerUrl = getExplorerUrl(txHash, network);
+
   return `
     <div class="ats-success-container">
       <div class="ats-success-icon-circle">
-        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="20 6 9 17 4 12"/>
         </svg>
       </div>
@@ -512,9 +588,19 @@ export function renderSuccessStep(_atsId: number, _txHash: string, _blockNumber:
       <div class="ats-success-download-description">
         Download the .ZIP file containing your PDF certificate of anteriority and a JSON file that will allow you to protect multiple versions of the same work if needed. The download includes JSON certificate and PDF files.
       </div>
-      <button type="button" class="ats-btn ats-btn-secondary" id="reset-btn">
-        Register Another Work
-      </button>
+      <a href="${explorerUrl}" class="ats-success-transaction-link" target="_blank" rel="noopener noreferrer">
+        View Transaction
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+      </a>
+      <div style="margin-top: 24px;">
+        <button type="button" class="ats-btn ats-btn-secondary" id="reset-btn">
+          Protect another work
+        </button>
+      </div>
     </div>
   `;
 }
@@ -525,7 +611,7 @@ export function renderSuccessStep(_atsId: number, _txHash: string, _blockNumber:
 export function renderErrorState(error: string, stage?: string): string {
   return `
     <div class="ats-alert ats-alert-error">
-      <strong>Error${stage ? ` during ${stage}` : ''}:</strong><br />
+      <strong>Error${stage ? ` during ${stage}` : ""}:</strong><br />
       ${escapeHtml(error)}
     </div>
     <div class="ats-btn-group ats-btn-group-right">
@@ -538,7 +624,10 @@ export function renderErrorState(error: string, stage?: string): string {
  * Render fatal authentication error (replaces entire component)
  * Used for 401 (invalid site-key) and 403 (domain not registered) errors
  */
-export function renderFatalAuthError(code: ApiErrorCode, message: string): string {
+export function renderFatalAuthError(
+  code: ApiErrorCode,
+  message: string,
+): string {
   const isInvalidKey = code === ApiErrorCode.INVALID_SITE_KEY;
 
   // Lock icon for invalid key, alert-triangle for domain error
@@ -546,7 +635,7 @@ export function renderFatalAuthError(code: ApiErrorCode, message: string): strin
     ? `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
     : `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`;
 
-  const title = isInvalidKey ? 'Invalid Site Key' : 'Domain Not Registered';
+  const title = isInvalidKey ? "Invalid Site Key" : "Domain Not Registered";
 
   return `
     <div class="ats-fatal-error">
@@ -564,7 +653,7 @@ export function renderFatalAuthError(code: ApiErrorCode, message: string): strin
  * Escape HTML special characters
  */
 function escapeHtml(str: string): string {
-  const div = document.createElement('div');
+  const div = document.createElement("div");
   div.textContent = str;
   return div.innerHTML;
 }

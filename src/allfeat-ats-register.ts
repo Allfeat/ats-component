@@ -1,7 +1,7 @@
 import {
   createSession,
-  initWork,
-  uploadFile,
+  initRegistration,
+  uploadFileToS3,
   prepareRegistration,
   confirmRegistration,
   downloadCertificateViaProxy,
@@ -130,9 +130,6 @@ interface ComponentState {
   preparedJob: PrepareRegistrationResponse | null;
   isAtsValid: boolean;
   isPreparing: boolean;
-  // Upload progress
-  uploadProgress: number;
-  isUploading: boolean;
   // Fatal auth error (hides the form)
   fatalAuthError: {
     code: ApiErrorCode;
@@ -204,9 +201,6 @@ export class AllfeatAtsRegister extends HTMLElement {
       preparedJob: null,
       isAtsValid: false,
       isPreparing: false,
-      // Upload progress
-      uploadProgress: 0,
-      isUploading: false,
       // Fatal auth error
       fatalAuthError: null,
     };
@@ -352,9 +346,6 @@ export class AllfeatAtsRegister extends HTMLElement {
       preparedJob: null,
       isAtsValid: false,
       isPreparing: false,
-      // Upload progress
-      uploadProgress: 0,
-      isUploading: false,
       // Preserve fatal auth error (cannot be reset without fixing config)
       fatalAuthError,
     };
@@ -598,7 +589,8 @@ export class AllfeatAtsRegister extends HTMLElement {
             content += renderSuccessStep(
               this.state.apiResponse.atsId,
               this.state.apiResponse.txHash,
-              this.state.apiResponse.blockNumber
+              this.state.apiResponse.blockNumber,
+              DEFAULT_NETWORK as 'testnet' | 'mainnet'
             );
           }
           break;
@@ -977,8 +969,13 @@ export class AllfeatAtsRegister extends HTMLElement {
   // ============================================
 
   /**
-   * Prepare registration (init → upload → prepare)
+   * Prepare registration (validation phase)
    * Called when entering the review step
+   *
+   * Implements the 3-step flow:
+   * 1. Init: Get job_id and presigned upload URL
+   * 2. Upload: Upload file directly to S3 (bypasses proxy/backend)
+   * 3. Prepare: Call prepare with job_id to get fees/commitment
    */
   private async handlePrepare(): Promise<void> {
     const { formState } = this.state;
@@ -987,21 +984,9 @@ export class AllfeatAtsRegister extends HTMLElement {
     this.state.isPreparing = true;
     this.state.isAtsValid = false;
     this.state.preparedJob = null;
-    this.state.uploadProgress = 0;
-    this.state.isUploading = false;
     this.render();
 
     try {
-      // Ensure valid session
-      await this.ensureValidSession();
-
-      if (!this.state.sessionToken) {
-        throw new AtsApiException(
-          'Session not available. Please refresh the page.',
-          'SESSION_ERROR' as any
-        );
-      }
-
       // Convert creators to API format
       const creators: CreatorRequest[] = formState.creators.map((c) => ({
         full_name: c.fullName,
@@ -1016,10 +1001,11 @@ export class AllfeatAtsRegister extends HTMLElement {
         isni: c.isni || undefined,
       }));
 
-      // Step 1: Init — get presigned upload URL
-      const initResponse = await initWork(
+      // Step 1: Init - get job_id and upload URL
+      console.log('[Prepare] Step 1: Calling init...');
+      const initResponse = await initRegistration(
         this.proxyEndpoint,
-        this.state.sessionToken,
+        this.state.sessionToken!,
         {
           title: formState.title,
           creators: creators,
@@ -1028,29 +1014,20 @@ export class AllfeatAtsRegister extends HTMLElement {
         }
       );
 
-      console.log('[Init] Success, job_id:', initResponse.job_id);
+      const { job_id, upload_url } = initResponse;
+      console.log('[Prepare] Step 1 complete, job_id:', job_id);
 
       // Step 2: Upload file directly to S3
-      this.state.isUploading = true;
-      this.render();
+      console.log('[Prepare] Step 2: Uploading file to S3...');
+      await uploadFileToS3(upload_url, formState.file!);
+      console.log('[Prepare] Step 2 complete, file uploaded');
 
-      await uploadFile(
-        initResponse.upload_url,
-        formState.file!,
-        (progress) => {
-          this.state.uploadProgress = progress;
-          this.render();
-        }
-      );
-
-      this.state.isUploading = false;
-      console.log('[Upload] Complete');
-
-      // Step 3: Prepare — validate the uploaded work
+      // Step 3: Call prepare with job_id
+      console.log('[Prepare] Step 3: Calling prepare...');
       const prepareResponse = await prepareRegistration(
         this.proxyEndpoint,
-        this.state.sessionToken,
-        initResponse.job_id,
+        this.state.sessionToken!,
+        { job_id }
       );
 
       this.state.preparedJob = prepareResponse;
@@ -1074,7 +1051,6 @@ export class AllfeatAtsRegister extends HTMLElement {
       });
     } finally {
       this.state.isPreparing = false;
-      this.state.isUploading = false;
       this.render();
     }
   }

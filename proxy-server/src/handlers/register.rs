@@ -1,30 +1,26 @@
 use crate::client::BackendClient;
 use crate::error::AppError;
 use axum::{
-    http::{HeaderMap, StatusCode, header},
+    http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
 use serde_json::{Value, json};
 
-/// Handle the `init` action.
+/// Handle the `register` action.
 ///
-/// Initiates the registration flow by calling the backend `/v1/works/init` endpoint.
-/// Returns a `job_id` and `upload_url` (presigned S3 URL) to the client.
+/// Validates the request payload, injects the passphrase from configuration,
+/// and forwards to `POST /v1/works/register`.
 ///
 /// Required fields:
 /// - `title`: Work title (string)
 /// - `creators`: Array of creator objects
+/// - `audio_base64`: Base64-encoded audio data (string)
 /// - `filename`: Original filename (string)
 ///
 /// Optional fields:
 /// - `network`: Network to use (defaults to config value)
-///
-/// The client should then:
-/// 1. Upload the file directly to S3 using the `upload_url`
-/// 2. Call `/prepare` with the `job_id`
-pub async fn handle_init(
+pub async fn handle_register(
     client: &BackendClient,
-    headers: &HeaderMap,
     payload: Value,
 ) -> Result<Response, AppError> {
     // Validate required fields
@@ -39,6 +35,11 @@ pub async fn handle_init(
         .filter(|arr| !arr.is_empty())
         .ok_or_else(|| AppError::BadRequest("Missing or invalid creators field".into()))?;
 
+    let audio_base64 = payload
+        .get("audio_base64")
+        .and_then(Value::as_str)
+        .ok_or_else(|| AppError::BadRequest("Missing or invalid audio_base64 field".into()))?;
+
     let filename = payload
         .get("filename")
         .and_then(Value::as_str)
@@ -50,34 +51,28 @@ pub async fn handle_init(
         .and_then(Value::as_str)
         .unwrap_or(client.network());
 
-    tracing::info!(
-        title = title,
-        creators_count = creators.len(),
-        filename = filename,
-        network = network,
-        "Handling init request"
-    );
-
-    // Build init request body
-    let init_body = json!({
+    // Build request body with injected passphrase
+    let request_body = json!({
         "network": network,
         "title": title,
         "creators": creators,
+        "audio_base64": audio_base64,
         "filename": filename,
+        "passphrase": client.passphrase(),
     });
 
-    // Extract Authorization header to forward to backend
-    let auth_header = headers
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .map(String::from);
+    // Log with truncated audio data
+    tracing::info!(
+        title = title,
+        creators_count = creators.len(),
+        audio_size = audio_base64.len(),
+        filename = filename,
+        network = network,
+        "Processing register request"
+    );
 
-    // Call backend init endpoint with auth header forwarded
-    let (status, body, _duration) = client
-        .post_with_auth("/v1/works/init", &init_body, auth_header.as_deref())
-        .await?;
-
-    tracing::info!(status = status, "Init request completed");
+    // Forward to backend
+    let (status, body, _duration) = client.post("/v1/works/register", &request_body).await?;
 
     Ok((
         StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),

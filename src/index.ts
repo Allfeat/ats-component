@@ -23,8 +23,8 @@ export {
   // Session management
   createSession,
   // Registration flow
-  initWork,
-  uploadFile,
+  initRegistration,
+  uploadFileToS3,
   prepareRegistration,
   confirmRegistration,
   // Utilities
@@ -42,8 +42,8 @@ export type {
   // Session types
   SessionResponse,
   // Registration flow types
-  InitWorkRequest,
-  InitWorkResponse,
+  InitRegistrationRequest,
+  InitRegistrationResponse,
   PrepareRegistrationRequest,
   PrepareRegistrationResponse,
   ConfirmRegistrationResponse,

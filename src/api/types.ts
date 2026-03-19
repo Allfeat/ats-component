@@ -11,13 +11,14 @@ export interface SessionResponse {
 }
 
 // ============================================
-// Init / Prepare / Confirm Registration Types
+// Init/Prepare/Confirm Registration Types (3-step flow)
 // ============================================
 
 /**
- * Request payload for init (get presigned upload URL)
+ * Request payload for init registration (step 1)
+ * Initializes the registration and gets a presigned S3 upload URL
  */
-export interface InitWorkRequest {
+export interface InitRegistrationRequest {
   title: string;
   creators: CreatorRequest[];
   filename: string;
@@ -25,16 +26,17 @@ export interface InitWorkRequest {
 }
 
 /**
- * Response from init (presigned upload URL)
+ * Response from init registration
+ * Contains the job_id and presigned upload_url for direct S3 upload
  */
-export interface InitWorkResponse {
+export interface InitRegistrationResponse {
   job_id: string;
   upload_url: string;
-  upload_expires_at: string;
 }
 
 /**
- * Request payload for prepare registration (validation phase, after upload)
+ * Request payload for prepare registration (step 3, after S3 upload)
+ * Only requires job_id since the file was uploaded directly to S3
  */
 export interface PrepareRegistrationRequest {
   job_id: string;
@@ -156,6 +158,26 @@ export interface CreatorRequest {
   isni?: string;
 }
 
+/**
+ * Registration request via proxy (server-side ZKP)
+ */
+export interface RegisterWorkProxyRequest {
+  action: 'register';
+  network?: 'testnet' | 'mainnet';
+  title: string;
+  creators: CreatorRequest[];
+  audio_base64: string;  // Base64-encoded file
+  filename: string;
+}
+
+/**
+ * Response from registration (always async)
+ */
+export interface RegisterWorkResponse {
+  transaction_id: string;
+  ws_url: string;
+  status_url: string;
+}
 
 /**
  * Download certificate request
@@ -239,9 +261,7 @@ export enum ApiErrorCode {
   SESSION_EXPIRED = 'SESSION_EXPIRED',
   INVALID_SITE_KEY = 'INVALID_SITE_KEY',
   DOMAIN_NOT_REGISTERED = 'DOMAIN_NOT_REGISTERED',
-  // Init/Upload/Prepare/Confirm errors
-  INIT_ERROR = 'INIT_ERROR',
-  UPLOAD_ERROR = 'UPLOAD_ERROR',
+  // Prepare/Confirm errors
   PREPARE_ERROR = 'PREPARE_ERROR',
   CONFIRM_ERROR = 'CONFIRM_ERROR',
   JOB_EXPIRED = 'JOB_EXPIRED',
