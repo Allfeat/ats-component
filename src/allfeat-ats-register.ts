@@ -121,6 +121,7 @@ interface ComponentState {
     blockNumber: number;
     blockTimestamp?: string;
     workId?: string;  // UUID for certificate download
+    explorerUrl?: string;  // Polkadot.js Apps URL for the transaction
   } | null;
   error: string | null;
   errorStage?: string;
@@ -590,7 +591,8 @@ export class AllfeatAtsRegister extends HTMLElement {
             content += renderSuccessStep(
               this.state.apiResponse.atsId,
               this.state.apiResponse.txHash,
-              this.state.apiResponse.blockNumber
+              this.state.apiResponse.blockNumber,
+              this.state.apiResponse.explorerUrl
             );
           }
           break;
@@ -1185,13 +1187,14 @@ export class AllfeatAtsRegister extends HTMLElement {
 
         this.updateProgress('submit', 95, 'Transaction confirmed');
 
-        // Store API response (including work_id for certificate download)
+        // Store API response (including work_id for certificate download and explorer_url)
         this.state.apiResponse = {
           atsId: details.ats_id,
           txHash: details.tx_hash,
           blockNumber: details.block_number,
           blockTimestamp: new Date().toISOString(),
           workId: details.work_id,
+          explorerUrl: details.explorer_url,
         };
 
         // Dispatch success event
@@ -1199,6 +1202,7 @@ export class AllfeatAtsRegister extends HTMLElement {
           atsId: details.ats_id,
           txHash: details.tx_hash,
           blockNumber: details.block_number,
+          explorerUrl: details.explorer_url,
           message: 'Transaction completed',
         });
 

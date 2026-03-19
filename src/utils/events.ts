@@ -25,6 +25,7 @@ export interface BlockchainSuccessDetail {
   atsId: number;
   txHash: string;
   blockNumber: number;
+  explorerUrl?: string;
   message?: string;
 }
 

@@ -139,6 +139,7 @@ export interface WsStepDetails {
   block_number?: number;
   ats_id?: number;
   work_id?: string;  // UUID for certificate download
+  explorer_url?: string;  // Polkadot.js Apps URL for the transaction
   error?: string;
 }
 
