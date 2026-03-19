@@ -196,6 +196,7 @@ export function renderFileStep(
 
   return `
     <div class="ats-section-title ats-section-title-centered">File Selection</div>
+    <div class="ats-section-title">Select the file to protect</div>
     <div class="ats-file-drop ${hasFile ? "has-file" : ""}" id="file-drop-zone">
       <div class="ats-file-drop-icon">${LUCIDE_ICONS.upload}</div>
       ${
@@ -211,13 +212,12 @@ export function renderFileStep(
       }
       <input type="file" id="file-input" class="ats-hidden" />
     </div>
-    <div class="ats-file-help-text">All file types are accepted.</div>
     ${errors.file ? `<div class="ats-error-message">${errors.file}</div>` : ""}
 
     ${
       isVersionFlow
         ? `
-      <div class="ats-section-title ats-section-title-centered" style="margin-top: 24px;">ATS Certificate</div>
+      <div class="ats-section-title" style="margin-top: 24px;">Select the .json file of the existing work</div>
       <div class="ats-file-drop ${hasAtsFile ? "has-file" : ""}" id="ats-file-drop-zone">
         <div class="ats-file-drop-icon">${LUCIDE_ICONS.upload}</div>
         ${
@@ -228,16 +228,17 @@ export function renderFileStep(
           <button type="button" class="ats-btn ats-btn-outline-destructive" id="remove-ats-file">Remove File</button>
         `
             : `
-          <div class="ats-file-drop-text"><strong>Drag & drop or select your file</strong></div>
+          <div class="ats-file-drop-text"><strong>Drag & Drop or select your .json file</strong></div>
         `
         }
         <input type="file" id="ats-file-input" accept=".json,application/json" class="ats-hidden" />
       </div>
-      <div class="ats-file-help-text">JSON files only (.json)</div>
       ${errors.atsFile ? `<div class="ats-error-message">${errors.atsFile}</div>` : ""}
     `
         : ""
     }
+
+    <div class="ats-file-help-text">All file types are accepted.</div>
 
     <div class="ats-btn-group ats-btn-group-center">
       <button type="button" class="ats-btn ats-btn-secondary" id="back-btn">
