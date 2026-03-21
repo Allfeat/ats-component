@@ -2,7 +2,7 @@ name: Deploy Component to R2
 
 on:
   push:
-    branches: [master]
+    branches: [master, develop]
     paths:
       - 'src/**'
       - 'package.json'
@@ -33,7 +33,8 @@ jobs:
         id: version
         run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
 
-      - name: Upload versioned files to R2
+      - name: Upload versioned files to R2 (production)
+        if: github.ref == 'refs/heads/master'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
@@ -54,7 +55,8 @@ jobs:
             fi
           done
 
-      - name: Upload latest files to R2
+      - name: Upload latest files to R2 (production)
+        if: github.ref == 'refs/heads/master'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
@@ -74,10 +76,32 @@ jobs:
             fi
           done
 
-      - name: Summary
+      - name: Upload dev files to R2 (pre-release)
+        if: github.ref == 'refs/heads/develop'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+          AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+          AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.eu.r2.cloudflarestorage.com
+        run: |
+          BUCKET="${{ secrets.R2_BUCKET_NAME }}"
+
+          for file in allfeat-ats-register.iife.js allfeat-ats-register.esm.js; do
+            if [ -f "dist/$file" ]; then
+              aws s3 cp "dist/$file" "s3://$BUCKET/dev/$file" \
+                --endpoint-url "$R2_ENDPOINT" \
+                --region auto \
+                --content-type "application/javascript" \
+                --cache-control "public, max-age=300"
+            fi
+          done
+
+      - name: Summary (production)
+        if: github.ref == 'refs/heads/master'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          echo "## Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Deployment Summary (Production)" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Version:** \`$VERSION\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -86,3 +110,17 @@ jobs:
           echo "|------|-----------|--------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| IIFE | \`https://cdn.allfeat.com/$VERSION/allfeat-ats-register.iife.js\` | \`https://cdn.allfeat.com/latest/allfeat-ats-register.iife.js\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| ESM  | \`https://cdn.allfeat.com/$VERSION/allfeat-ats-register.esm.js\`  | \`https://cdn.allfeat.com/latest/allfeat-ats-register.esm.js\`  |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Summary (dev)
+        if: github.ref == 'refs/heads/develop'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "## Deployment Summary (Dev Pre-release)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Version:** \`$VERSION\` (dev)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### URLs" >> "$GITHUB_STEP_SUMMARY"
+          echo "| File | Dev URL |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|---------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| IIFE | \`https://cdn.allfeat.com/dev/allfeat-ats-register.iife.js\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ESM  | \`https://cdn.allfeat.com/dev/allfeat-ats-register.esm.js\`  |" >> "$GITHUB_STEP_SUMMARY"
