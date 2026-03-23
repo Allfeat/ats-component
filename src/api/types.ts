@@ -61,7 +61,9 @@ export interface PrepareWorkResponse {
   total_deposit_credits?: number;
   /** Service fee in credits. */
   service_fee_credits?: number;
-  /** Total price (network + service + deposit) in credits. */
+  /** Storage fee in credits (0 for files ≤ 10 MB). */
+  storage_fee_credits?: number;
+  /** Total price (network + service + deposit + storage) in credits. */
   total_price_credits?: number;
   /** Whether the submitted data passed server-side validation. */
   is_valid?: boolean;
@@ -110,6 +112,8 @@ export interface PrepareVersionResponse {
   network_fee_credits?: number;
   /** Service fee in credits. */
   service_fee_credits?: number;
+  /** Storage fee in credits (0 for files ≤ 10 MB). */
+  storage_fee_credits?: number;
   /** Total price in credits. */
   total_price_credits?: number;
   /** Whether the submitted data passed server-side validation. */
