@@ -1,0 +1,105 @@
+---
+title: Error Handling
+description: Handle ATS Widget errors gracefully — error events, error codes, built-in retry behavior, and recovery patterns.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The widget handles most errors internally and displays user-friendly messages. For deeper control, listen to the error events and react accordingly.
+
+## Error Events
+
+### `allfeat:failed` — Critical Errors
+
+Emitted when the operation cannot continue. The widget shows an error screen.
+
+```javascript
+widget.addEventListener('allfeat:failed', (e) => {
+  const { error, stage, code } = e.detail;
+
+  console.error(`[${stage}] ${error} (${code})`);
+
+  // Example: redirect on permission error
+  if (code === 'FORBIDDEN') {
+    window.location.href = '/access-denied';
+  }
+});
+```
+
+### `allfeat:error` — Non-Fatal Errors
+
+Emitted for recoverable errors. The widget continues operating.
+
+```javascript
+widget.addEventListener('allfeat:error', (e) => {
+  // Log for monitoring, no user action needed
+  sendToMonitoring({
+    stage: e.detail.stage,
+    error: e.detail.error,
+    code: e.detail.code,
+  });
+});
+```
+
+### `allfeat:token-expired` — Authentication Errors
+
+See [Authentication](/guides/authentication/#automatic-token-renewal) for the full token refresh flow.
+
+## Error Codes
+
+| Code | HTTP | Description |
+|------|------|-------------|
+| `TOKEN_EXPIRED` | 401 | JWT token has expired |
+| `INVALID_SITE_KEY` | 401 | The `site-key` attribute is missing or doesn't match the token |
+| `FORBIDDEN` | 403 | Token doesn't have permission for this action |
+| `NOT_FOUND` | 404 | Resource not found (e.g., invalid access code) |
+| `CONFLICT` | 409 | Duplicate or conflicting operation |
+| `RATE_LIMITED` | 429 | Too many requests |
+| `BAD_REQUEST` | 400 | Invalid request data |
+| `SERVER_ERROR` | 5xx | Allfeat API server error |
+| `NETWORK_ERROR` | — | Network connectivity issue |
+| `UPLOAD_ERROR` | — | File upload to S3 failed |
+| `UNKNOWN_ERROR` | — | Unexpected error |
+
+<Aside type="note">
+See the full [Error Codes Reference](/reference/error-codes/) for detailed descriptions and recommended actions.
+</Aside>
+
+## Retry Behavior
+
+The widget has built-in retry logic for transient failures:
+
+| Scenario | Behavior |
+|----------|----------|
+| **File upload** | Up to 3 retries with exponential backoff (1s, 2s, 4s) |
+| **Token expiry** | Pauses and waits for a new token (60-second timeout) |
+| **Rate limiting (429)** | Up to 2 retries with backoff (1s, 2s, or `Retry-After` header) |
+| **Transaction polling** | Polls every 3s with a 120-second timeout |
+| **Network errors** | Displayed to the user with an error screen |
+
+## Resetting After an Error
+
+Call `widget.reset()` to clear the error state and return to the form:
+
+```javascript
+widget.addEventListener('allfeat:failed', (e) => {
+  // Show a "Try again" button
+  retryButton.onclick = () => widget.reset();
+});
+```
+
+## Getting the Current State
+
+Use `getState()` to inspect the widget's current state for debugging:
+
+```javascript
+const state = widget.getState();
+console.log(state);
+// {
+//   screen: 'FAILED',
+//   jobId: '...',
+//   transactionId: '...',
+//   atsId: null,
+//   accessCode: undefined
+// }
+```

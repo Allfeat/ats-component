@@ -191,7 +191,7 @@ The proxy backend manages allowed domains in a database instead of configuration
 | `127.0.0.1` | Development |
 | `*.customer.com` | Customer with all subdomains |
 | `app.customer.io` | Specific subdomain only |
-| `*.allfeat.com` | Allfeat domains |
+| `*.allfeat.org` | Allfeat domains |
 
 ### 2.3 Routing to web2-platform Endpoints
 

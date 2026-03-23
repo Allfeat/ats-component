@@ -1,539 +1,584 @@
 import {
   ApiErrorCode,
   AtsApiException,
-  ConfirmRegistrationResponse,
-  DownloadCertificateRequest,
-  DownloadCertificateResponse,
-  InitRegistrationRequest,
-  InitRegistrationResponse,
-  ParseCertificateRequest,
-  ParseCertificateResponse,
-  PrepareRegistrationRequest,
-  PrepareRegistrationResponse,
+  ConfirmWorkResponse,
+  ConfirmVersionResponse,
   CreatorRequest,
-  RegisterWorkProxyRequest,
-  RegisterWorkResponse,
-  SessionResponse,
+  DownloadCertificateResponse,
+  InitWorkResponse,
+  InitVersionUploadResponse,
+  InitVersionResponse,
+  PrepareWorkResponse,
+  PrepareVersionResponse,
+  StatsResponse,
   TransactionStatusResponse,
   WsMessage,
   WsStepDetails,
-} from "./types";
+  AccessWorkResponse,
+} from './types';
+import { AUTH_FETCH_MAX_RETRIES } from '../constants';
 
-/**
- * Component Service URL for session management
- * This is hardcoded to ensure secure authentication flow
- */
-export const COMPONENT_SERVICE_URL = "http://localhost:13008";
+// ============================================
+// Helpers
+// ============================================
 
-/**
- * Parse error message to determine error code
- */
-function parseErrorCode(message: string, httpStatus?: number): ApiErrorCode {
-  const lowerMessage = message.toLowerCase();
+function buildUrl(atsUrl: string, path: string): string {
+  return atsUrl.replace(/\/+$/, '') + path;
+}
 
-  if (httpStatus === 401) {
-    // Only match SESSION_EXPIRED for explicit expiry messages (token refresh scenarios)
-    if (lowerMessage.includes("expired") || lowerMessage.includes("session")) {
-      return ApiErrorCode.SESSION_EXPIRED;
-    }
-    // Default all other 401s to INVALID_SITE_KEY
-    // This includes "Invalid token", "Invalid site key", or any auth failure during session creation
-    return ApiErrorCode.INVALID_SITE_KEY;
+function mapHttpError(status: number, message: string): ApiErrorCode {
+  switch (status) {
+    case 400: return ApiErrorCode.BAD_REQUEST;
+    case 401:
+      if (message.toLowerCase().includes('site-key') || message.toLowerCase().includes('site_key')) {
+        return ApiErrorCode.INVALID_SITE_KEY;
+      }
+      return ApiErrorCode.TOKEN_EXPIRED;
+    case 403: return ApiErrorCode.FORBIDDEN;
+    case 404: return ApiErrorCode.NOT_FOUND;
+    case 409: return ApiErrorCode.CONFLICT;
+    case 413: return ApiErrorCode.BAD_REQUEST;
+    case 422: return ApiErrorCode.BAD_REQUEST;
+    case 429: return ApiErrorCode.RATE_LIMITED;
+    default:
+      if (status >= 500) return ApiErrorCode.SERVER_ERROR;
+      return ApiErrorCode.UNKNOWN_ERROR;
   }
+}
 
-  if (httpStatus === 403) {
-    // 403 indicates domain not registered or origin not allowed
-    if (lowerMessage.includes("domain") || lowerMessage.includes("origin") ||
-        lowerMessage.includes("not registered") || lowerMessage.includes("not allowed")) {
-      return ApiErrorCode.DOMAIN_NOT_REGISTERED;
-    }
-    // Default 403 to domain not registered
-    return ApiErrorCode.DOMAIN_NOT_REGISTERED;
+async function parseErrorBody(response: Response): Promise<string> {
+  try {
+    const text = await response.text();
+    const body = JSON.parse(text);
+    return body.error || body.message || `HTTP ${response.status}`;
+  } catch {
+    return `HTTP ${response.status}`;
   }
-
-  if (httpStatus === 400) {
-    if (
-      lowerMessage.includes("balance") ||
-      lowerMessage.includes("insufficient")
-    ) {
-      return ApiErrorCode.INSUFFICIENT_BALANCE;
-    }
-    if (lowerMessage.includes("wallet")) {
-      return ApiErrorCode.WALLET_NOT_CONFIGURED;
-    }
-    if (lowerMessage.includes("job") && lowerMessage.includes("expired")) {
-      return ApiErrorCode.JOB_EXPIRED;
-    }
-  }
-
-  if (httpStatus === 500) {
-    return ApiErrorCode.TRANSACTION_FAILED;
-  }
-
-  return ApiErrorCode.UNKNOWN_ERROR;
 }
 
 // ============================================
-// Session Management
+// Authenticated Fetch
 // ============================================
 
 /**
- * Create a new session using site key
- *
- * Calls the Component Service to create a session token that can be used
- * for subsequent API calls. The browser automatically sends the Origin header.
- *
- * @param siteKey - Partner site key (cpk_...)
- * @param serviceUrl - Component Service URL (optional, defaults to COMPONENT_SERVICE_URL)
- * @returns Session token and expiration time
- * @throws AtsApiException on any error
+ * Performs an authenticated fetch with automatic retry on 429 and structured error handling.
+ * @param url - Fully-qualified URL to fetch.
+ * @param token - JWT bearer token.
+ * @param siteKey - Partner site key sent as `X-Site-Key`.
+ * @param options - Additional `RequestInit` options merged into the request.
+ * @param onTokenExpired - Optional callback invoked when the server reports an expired token.
+ * @returns The successful `Response` object.
+ * @throws {AtsApiException} On HTTP errors, network failures, or exhausted retries.
  */
-export async function createSession(
+export async function authenticatedFetch(
+  url: string,
+  token: string,
   siteKey: string,
-  serviceUrl: string = COMPONENT_SERVICE_URL
-): Promise<SessionResponse> {
-  const url = `${serviceUrl}/v1/sessions`;
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ site_key: siteKey }),
-      // Browser automatically sends Origin header for CORS
-    });
-
-    if (!response.ok) {
-      let errorMessage: string;
-      try {
-        const text = await response.text();
-        const errorBody = JSON.parse(text);
-        errorMessage =
-          errorBody.error || errorBody.message || "Session creation failed";
-      } catch {
-        errorMessage = `HTTP ${response.status}`;
-      }
-
-      throw new AtsApiException(
-        errorMessage,
-        parseErrorCode(errorMessage, response.status),
-        response.status,
-      );
-    }
-
-    return (await response.json()) as SessionResponse;
-  } catch (error) {
-    if (error instanceof AtsApiException) {
-      throw error;
-    }
-
-    if (error instanceof TypeError && error.message.includes("fetch")) {
-      throw new AtsApiException(
-        "Network error: Unable to connect to authentication service",
-        ApiErrorCode.NETWORK_ERROR,
-        undefined,
-        error,
-      );
-    }
-
-    throw new AtsApiException(
-      error instanceof Error ? error.message : "Unknown error occurred",
-      ApiErrorCode.SESSION_ERROR,
-      undefined,
-      error,
-    );
-  }
-}
-
-// ============================================
-// Three-Step Registration (Init → S3 Upload → Prepare → Confirm)
-// ============================================
-
-/**
- * Initialize registration (step 1)
- *
- * Calls the proxy /init endpoint to get a presigned S3 upload URL.
- * After calling this, the client should:
- * 1. Upload the file directly to S3 using the upload_url
- * 2. Call prepareRegistration() with the job_id
- *
- * @param proxyEndpoint - Proxy server URL
- * @param sessionToken - Session token from createSession()
- * @param data - Work metadata (no file data)
- * @returns Job ID and presigned upload URL
- * @throws AtsApiException on validation or network error
- */
-export async function initRegistration(
-  proxyEndpoint: string,
-  sessionToken: string,
-  data: InitRegistrationRequest,
-): Promise<InitRegistrationResponse> {
-  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
-
-  const body = {
-    action: "init",
-    title: data.title,
-    creators: data.creators,
-    filename: data.filename,
+  options: RequestInit = {},
+  onTokenExpired?: () => void,
+): Promise<Response> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+    'X-Site-Key': siteKey,
+    ...(options.headers as Record<string, string> || {}),
   };
 
-  try {
-    const response = await fetch(normalizedEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${sessionToken}`,
-      },
-      body: JSON.stringify(body),
-    });
+  for (let attempt = 0; attempt <= AUTH_FETCH_MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers,
+      });
 
-    if (!response.ok) {
-      let errorMessage: string;
-      try {
-        const text = await response.text();
-        const errorBody = JSON.parse(text);
-        errorMessage =
-          errorBody.error || errorBody.message || "Init registration failed";
-      } catch {
-        errorMessage = `HTTP ${response.status}`;
+      if (response.ok || response.status === 202) {
+        return response;
+      }
+
+      // Handle 429 with retry
+      if (response.status === 429 && attempt < AUTH_FETCH_MAX_RETRIES) {
+        const retryAfter = response.headers.get('Retry-After');
+        const delayMs = retryAfter
+          ? parseFloat(retryAfter) * 1000
+          : (attempt + 1) * 1000; // 1s, 2s
+        await new Promise(r => setTimeout(r, delayMs));
+        continue;
+      }
+
+      const errorMessage = await parseErrorBody(response);
+      const code = mapHttpError(response.status, errorMessage);
+
+      if (code === ApiErrorCode.TOKEN_EXPIRED && onTokenExpired) {
+        onTokenExpired();
+      }
+
+      throw new AtsApiException(errorMessage, code, response.status);
+    } catch (error) {
+      if (error instanceof AtsApiException) throw error;
+
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new AtsApiException(
+          'Network error: Unable to connect to server',
+          ApiErrorCode.NETWORK_ERROR,
+          undefined,
+          error,
+        );
       }
 
       throw new AtsApiException(
-        errorMessage,
-        ApiErrorCode.PREPARE_ERROR,
-        response.status,
-      );
-    }
-
-    return (await response.json()) as InitRegistrationResponse;
-  } catch (error) {
-    if (error instanceof AtsApiException) {
-      throw error;
-    }
-
-    if (error instanceof TypeError && error.message.includes("fetch")) {
-      throw new AtsApiException(
-        "Network error: Unable to connect to proxy server",
-        ApiErrorCode.NETWORK_ERROR,
+        error instanceof Error ? error.message : 'Unknown error',
+        ApiErrorCode.UNKNOWN_ERROR,
         undefined,
         error,
       );
     }
+  }
 
+  // Should not reach here, but satisfy TypeScript
+  throw new AtsApiException('Unexpected error', ApiErrorCode.UNKNOWN_ERROR);
+}
+
+// ============================================
+// Stats (public, no auth)
+// ============================================
+
+/**
+ * Fetches platform-wide statistics (no authentication required).
+ * @param atsUrl - Base ATS API URL.
+ * @param network - Target network (`"testnet"` or `"mainnet"`).
+ * @returns Platform statistics including total works and max file size.
+ * @throws {AtsApiException} On HTTP or network errors.
+ */
+export async function fetchStats(atsUrl: string, network: string): Promise<StatsResponse> {
+  const url = buildUrl(atsUrl, `/v1/stats?network=${encodeURIComponent(network)}`);
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new AtsApiException(
+        `Failed to fetch stats: HTTP ${response.status}`,
+        ApiErrorCode.SERVER_ERROR,
+        response.status,
+      );
+    }
+    return (await response.json()) as StatsResponse;
+  } catch (error) {
+    if (error instanceof AtsApiException) throw error;
     throw new AtsApiException(
-      error instanceof Error ? error.message : "Unknown error occurred",
-      ApiErrorCode.PREPARE_ERROR,
+      'Network error: Unable to fetch stats',
+      ApiErrorCode.NETWORK_ERROR,
       undefined,
       error,
     );
   }
 }
 
+// ============================================
+// Register Mode — Init / Prepare / Confirm
+// ============================================
+
 /**
- * Upload file directly to S3 (step 2)
- *
- * Uploads the raw file to the presigned S3 URL obtained from initRegistration().
- * This bypasses the proxy/backend servers to avoid large file transfers.
- *
- * @param uploadUrl - Presigned S3 URL from initRegistration()
- * @param file - File to upload
- * @throws AtsApiException on upload failure
+ * Initializes a new work registration (`POST /v1/works/init`).
+ * Returns a job ID and a pre-signed upload URL for the audio file.
+ * @param atsUrl - Base ATS API URL.
+ * @param token - JWT bearer token.
+ * @param siteKey - Partner site key.
+ * @param data - Work metadata: title, creators, filename, and target network.
+ * @param onTokenExpired - Optional callback invoked on token expiry.
+ * @throws {AtsApiException} On HTTP or network errors.
  */
-export async function uploadFileToS3(
-  uploadUrl: string,
+export async function initWork(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  data: { title: string; creators: CreatorRequest[]; filename: string; network: string },
+  onTokenExpired?: () => void,
+): Promise<InitWorkResponse> {
+  const url = buildUrl(atsUrl, '/v1/works/init');
+  const response = await authenticatedFetch(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }, onTokenExpired);
+  return (await response.json()) as InitWorkResponse;
+}
+
+/**
+ * Prepares a work for on-chain registration (`POST /v1/works/prepare`).
+ * Returns pricing details and a commitment hash for the work.
+ * @param atsUrl - Base ATS API URL.
+ * @param token - JWT bearer token.
+ * @param siteKey - Partner site key.
+ * @param data - Object containing the `job_id` from `initWork`.
+ * @param onTokenExpired - Optional callback invoked on token expiry.
+ * @throws {AtsApiException} On HTTP or network errors.
+ */
+export async function prepareWork(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  data: { job_id: string },
+  onTokenExpired?: () => void,
+): Promise<PrepareWorkResponse> {
+  const url = buildUrl(atsUrl, '/v1/works/prepare');
+  const response = await authenticatedFetch(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify({ ...data, passphrase: null }),
+  }, onTokenExpired);
+  return (await response.json()) as PrepareWorkResponse;
+}
+
+/**
+ * Confirms a work registration and triggers the blockchain transaction (`POST /v1/works/confirm`).
+ * @param atsUrl - Base ATS API URL.
+ * @param token - JWT bearer token.
+ * @param siteKey - Partner site key.
+ * @param data - Object containing the `job_id` from `initWork`.
+ * @param onTokenExpired - Optional callback invoked on token expiry.
+ * @returns Transaction tracking URLs (WebSocket and polling).
+ * @throws {AtsApiException} On HTTP or network errors.
+ */
+export async function confirmWork(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  data: { job_id: string },
+  onTokenExpired?: () => void,
+): Promise<ConfirmWorkResponse> {
+  const url = buildUrl(atsUrl, '/v1/works/confirm');
+  const response = await authenticatedFetch(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }, onTokenExpired);
+  return (await response.json()) as ConfirmWorkResponse;
+}
+
+// ============================================
+// Update Mode — Version endpoints
+// ============================================
+
+/**
+ * Initializes a version update with a new file upload (`POST /v1/access/{accessCode}/versions/init-upload`).
+ * @param atsUrl - Base ATS API URL.
+ * @param token - JWT bearer token.
+ * @param siteKey - Partner site key.
+ * @param accessCode - Access code of the work to update.
+ * @param data - Updated creators list and new filename.
+ * @param onTokenExpired - Optional callback invoked on token expiry.
+ * @returns A job ID and pre-signed upload URL.
+ * @throws {AtsApiException} On HTTP or network errors.
+ */
+export async function initVersionUpload(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  accessCode: string,
+  data: { creators: CreatorRequest[]; filename: string },
+  onTokenExpired?: () => void,
+): Promise<InitVersionUploadResponse> {
+  const url = buildUrl(atsUrl, `/v1/access/${accessCode}/versions/init-upload`);
+  const response = await authenticatedFetch(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }, onTokenExpired);
+  return (await response.json()) as InitVersionUploadResponse;
+}
+
+/**
+ * Initializes a metadata-only version update (`POST /v1/access/{accessCode}/versions/init`).
+ * @param atsUrl - Base ATS API URL.
+ * @param token - JWT bearer token.
+ * @param siteKey - Partner site key.
+ * @param accessCode - Access code of the work to update.
+ * @param data - Updated creators list.
+ * @param onTokenExpired - Optional callback invoked on token expiry.
+ * @throws {AtsApiException} On HTTP or network errors.
+ */
+export async function initVersion(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  accessCode: string,
+  data: { creators: CreatorRequest[] },
+  onTokenExpired?: () => void,
+): Promise<InitVersionResponse> {
+  const url = buildUrl(atsUrl, `/v1/access/${accessCode}/versions/init`);
+  const response = await authenticatedFetch(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }, onTokenExpired);
+  return (await response.json()) as InitVersionResponse;
+}
+
+/**
+ * Prepares a version update for on-chain submission (`POST /v1/access/{accessCode}/versions/prepare`).
+ * @param atsUrl - Base ATS API URL.
+ * @param token - JWT bearer token.
+ * @param siteKey - Partner site key.
+ * @param accessCode - Access code of the work to update.
+ * @param data - Object containing the `job_id` from `initVersionUpload` or `initVersion`.
+ * @param onTokenExpired - Optional callback invoked on token expiry.
+ * @returns Pricing details and commitment hash.
+ * @throws {AtsApiException} On HTTP or network errors.
+ */
+export async function prepareVersion(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  accessCode: string,
+  data: { job_id: string },
+  onTokenExpired?: () => void,
+): Promise<PrepareVersionResponse> {
+  const url = buildUrl(atsUrl, `/v1/access/${accessCode}/versions/prepare`);
+  const response = await authenticatedFetch(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify({ ...data, passphrase: null }),
+  }, onTokenExpired);
+  return (await response.json()) as PrepareVersionResponse;
+}
+
+/**
+ * Confirms a version update and triggers the blockchain transaction (`POST /v1/access/{accessCode}/versions/confirm`).
+ * @param atsUrl - Base ATS API URL.
+ * @param token - JWT bearer token.
+ * @param siteKey - Partner site key.
+ * @param accessCode - Access code of the work to update.
+ * @param data - Object containing the `job_id` from `initVersionUpload` or `initVersion`.
+ * @param onTokenExpired - Optional callback invoked on token expiry.
+ * @returns Transaction tracking URLs (WebSocket and polling).
+ * @throws {AtsApiException} On HTTP or network errors.
+ */
+export async function confirmVersion(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  accessCode: string,
+  data: { job_id: string },
+  onTokenExpired?: () => void,
+): Promise<ConfirmVersionResponse> {
+  const url = buildUrl(atsUrl, `/v1/access/${accessCode}/versions/confirm`);
+  const response = await authenticatedFetch(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }, onTokenExpired);
+  return (await response.json()) as ConfirmVersionResponse;
+}
+
+// ============================================
+// Access Mode — Fetch Work by Access Code
+// ============================================
+
+/**
+ * Retrieves full work details by access code (`GET /v1/access/{accessCode}/work`).
+ * @param atsUrl - Base ATS API URL.
+ * @param token - JWT bearer token.
+ * @param siteKey - Partner site key.
+ * @param accessCode - The work's access code.
+ * @param onTokenExpired - Optional callback invoked on token expiry.
+ * @throws {AtsApiException} On HTTP or network errors.
+ */
+export async function fetchAccessWork(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  accessCode: string,
+  onTokenExpired?: () => void,
+): Promise<AccessWorkResponse> {
+  const url = buildUrl(atsUrl, `/v1/access/${encodeURIComponent(accessCode)}/work`);
+  const response = await authenticatedFetch(url, token, siteKey, {
+    method: 'GET',
+  }, onTokenExpired);
+  return (await response.json()) as AccessWorkResponse;
+}
+
+// ============================================
+// S3 Upload with Progress
+// ============================================
+
+/**
+ * Uploads a file to S3 via a pre-signed PUT URL with progress reporting and automatic retries.
+ * Uses `XMLHttpRequest` to enable upload progress events.
+ * @param url - Pre-signed S3 upload URL.
+ * @param file - The `File` object to upload.
+ * @param onProgress - Optional callback receiving `(progress%, loadedBytes, totalBytes)`.
+ * @param maxRetries - Maximum number of retry attempts (default: 3). Uses exponential backoff.
+ * @throws {AtsApiException} With `UPLOAD_ERROR` or `NETWORK_ERROR` code after all retries are exhausted.
+ */
+export function uploadFileToS3WithProgress(
+  url: string,
   file: File,
+  onProgress?: (progress: number, loaded: number, total: number) => void,
+  maxRetries: number = 3,
 ): Promise<void> {
-  try {
-    const response = await fetch(uploadUrl, {
-      method: "PUT",
-      body: file,
+  let attempt = 0;
+
+  const doUpload = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && onProgress) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          onProgress(progress, event.loaded, event.total);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(new AtsApiException(
+            `Upload failed: HTTP ${xhr.status}`,
+            ApiErrorCode.UPLOAD_ERROR,
+            xhr.status,
+          ));
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new AtsApiException(
+          'Network error during upload',
+          ApiErrorCode.NETWORK_ERROR,
+        ));
+      };
+
+      xhr.ontimeout = () => {
+        reject(new AtsApiException(
+          'Upload timed out',
+          ApiErrorCode.NETWORK_ERROR,
+        ));
+      };
+
+      xhr.open('PUT', url);
+      xhr.send(file);
     });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "");
-      throw new AtsApiException(
-        `File upload failed: ${response.status} ${errorText}`,
-        ApiErrorCode.PREPARE_ERROR,
-        response.status,
-      );
-    }
-  } catch (error) {
-    if (error instanceof AtsApiException) {
-      throw error;
-    }
-
-    if (error instanceof TypeError && error.message.includes("fetch")) {
-      throw new AtsApiException(
-        "Network error: Unable to upload file to storage",
-        ApiErrorCode.NETWORK_ERROR,
-        undefined,
-        error,
-      );
-    }
-
-    throw new AtsApiException(
-      error instanceof Error ? error.message : "File upload failed",
-      ApiErrorCode.PREPARE_ERROR,
-      undefined,
-      error,
-    );
-  }
-}
-
-/**
- * Prepare registration (step 3, after S3 upload)
- *
- * Calls the proxy /prepare endpoint with the job_id.
- * This should be called after successfully uploading the file to S3.
- *
- * @param proxyEndpoint - Proxy server URL
- * @param sessionToken - Session token from createSession()
- * @param data - Job ID from initRegistration()
- * @returns Job details including fees, commitment, and expiration
- * @throws AtsApiException on validation or network error
- */
-export async function prepareRegistration(
-  proxyEndpoint: string,
-  sessionToken: string,
-  data: PrepareRegistrationRequest,
-): Promise<PrepareRegistrationResponse> {
-  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
-
-  const body = {
-    action: "prepare",
-    job_id: data.job_id,
   };
 
-  try {
-    const response = await fetch(normalizedEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${sessionToken}`,
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      let errorMessage: string;
-      try {
-        const text = await response.text();
-        const errorBody = JSON.parse(text);
-        errorMessage =
-          errorBody.error || errorBody.message || "Prepare registration failed";
-      } catch {
-        errorMessage = `HTTP ${response.status}`;
+  const attemptWithRetry = async (): Promise<void> => {
+    attempt++;
+    try {
+      await doUpload();
+    } catch (error) {
+      if (attempt < maxRetries) {
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = Math.pow(2, attempt - 1) * 1000;
+        await new Promise(r => setTimeout(r, delay));
+        return attemptWithRetry();
       }
-
-      throw new AtsApiException(
-        errorMessage,
-        ApiErrorCode.PREPARE_ERROR,
-        response.status,
-      );
-    }
-
-    return (await response.json()) as PrepareRegistrationResponse;
-  } catch (error) {
-    if (error instanceof AtsApiException) {
       throw error;
     }
-
-    if (error instanceof TypeError && error.message.includes("fetch")) {
-      throw new AtsApiException(
-        "Network error: Unable to connect to proxy server",
-        ApiErrorCode.NETWORK_ERROR,
-        undefined,
-        error,
-      );
-    }
-
-    throw new AtsApiException(
-      error instanceof Error ? error.message : "Unknown error occurred",
-      ApiErrorCode.PREPARE_ERROR,
-      undefined,
-      error,
-    );
-  }
-}
-
-/**
- * Confirm registration (commit phase)
- *
- * Confirms a prepared registration to start blockchain submission.
- * Must be called before the job expires.
- *
- * @param proxyEndpoint - Proxy server URL
- * @param sessionToken - Session token from createSession()
- * @param jobId - Job ID from prepareRegistration()
- * @returns Transaction tracking URLs
- * @throws AtsApiException on confirmation or network error
- */
-export async function confirmRegistration(
-  proxyEndpoint: string,
-  sessionToken: string,
-  jobId: string,
-): Promise<ConfirmRegistrationResponse> {
-  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
-
-  const body = {
-    action: "confirm",
-    job_id: jobId,
   };
 
-  try {
-    const response = await fetch(normalizedEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${sessionToken}`,
-      },
-      body: JSON.stringify(body),
-    });
-
-    // 202 Accepted is success for async operations
-    if (!response.ok && response.status !== 202) {
-      let errorMessage: string;
-      try {
-        const text = await response.text();
-        const errorBody = JSON.parse(text);
-        errorMessage =
-          errorBody.error || errorBody.message || "Confirm registration failed";
-      } catch {
-        errorMessage = `HTTP ${response.status}`;
-      }
-
-      throw new AtsApiException(
-        errorMessage,
-        ApiErrorCode.CONFIRM_ERROR,
-        response.status,
-      );
-    }
-
-    return (await response.json()) as ConfirmRegistrationResponse;
-  } catch (error) {
-    if (error instanceof AtsApiException) {
-      throw error;
-    }
-
-    if (error instanceof TypeError && error.message.includes("fetch")) {
-      throw new AtsApiException(
-        "Network error: Unable to connect to proxy server",
-        ApiErrorCode.NETWORK_ERROR,
-        undefined,
-        error,
-      );
-    }
-
-    throw new AtsApiException(
-      error instanceof Error ? error.message : "Unknown error occurred",
-      ApiErrorCode.CONFIRM_ERROR,
-      undefined,
-      error,
-    );
-  }
+  return attemptWithRetry();
 }
 
+// ============================================
+// Certificate Download
+// ============================================
+
 /**
- * Subscribe to transaction updates via WebSocket
- *
- * Connects to the WebSocket endpoint and listens for transaction progress updates.
- * Handles the full lifecycle: connection, progress updates, completion, and errors.
- *
- * @param wsUrl - The WebSocket URL path (e.g., "/v1/ws/transactions/xxx")
- * @param baseWsUrl - The base WebSocket URL (e.g., "ws://localhost:3333")
- * @param onProgress - Callback for progress updates (step, progress %, description)
- * @param onComplete - Callback when transaction completes with final details
- * @param onError - Callback when an error occurs
- * @returns The WebSocket instance (for cleanup)
+ * Fetches a pre-signed download URL for a work's certificate PDF (`GET /v1/works/{workId}/download/certificate`).
+ * @param atsUrl - Base ATS API URL.
+ * @param token - JWT bearer token.
+ * @param siteKey - Partner site key.
+ * @param workId - The work's identifier.
+ * @param onTokenExpired - Optional callback invoked on token expiry.
+ * @throws {AtsApiException} On HTTP or network errors.
+ */
+export async function downloadCertificate(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  workId: string,
+  onTokenExpired?: () => void,
+): Promise<DownloadCertificateResponse> {
+  const url = buildUrl(atsUrl, `/v1/works/${workId}/download/certificate`);
+  const response = await authenticatedFetch(url, token, siteKey, {
+    method: 'GET',
+  }, onTokenExpired);
+  return (await response.json()) as DownloadCertificateResponse;
+}
+
+// ============================================
+// Transaction Tracking — WebSocket (PUBLIC)
+// ============================================
+
+/**
+ * Subscribes to real-time transaction progress via WebSocket.
+ * Automatically closes the socket on completion, failure, or error.
+ * @param wsUrl - Relative WebSocket path returned by `confirmWork` / `confirmVersion`.
+ * @param baseWsUrl - Base WebSocket URL (e.g. `"wss://ats.allfeat.com"`).
+ * @param onProgress - Callback for intermediate progress updates.
+ * @param onComplete - Callback when the transaction succeeds, receives final step details.
+ * @param onDisconnect - Callback when the socket disconnects unexpectedly (triggers polling fallback).
+ * @returns The underlying `WebSocket` instance for manual control if needed.
  */
 export function subscribeToTransaction(
   wsUrl: string,
   baseWsUrl: string,
   onProgress: (step: string, progress: number, description: string) => void,
   onComplete: (details: WsStepDetails) => void,
-  onError: (error: string) => void,
+  onDisconnect: () => void,
 ): WebSocket {
   const fullUrl = baseWsUrl + wsUrl;
   const ws = new WebSocket(fullUrl);
 
-  ws.onopen = () => {
-    console.log("[WebSocket] Connected to transaction tracker");
-  };
-
   ws.onmessage = (event) => {
     try {
       const msg: WsMessage = JSON.parse(event.data);
-      console.log("[WebSocket] Message received:", msg);
 
       switch (msg.type) {
-        case "connected":
-          // Initial connection acknowledgment
-          console.log("[WebSocket] Connection acknowledged");
+        case 'connected':
           break;
 
-        case "update":
-          if (msg.step === "completed" && msg.details) {
-            // Transaction completed successfully
+        case 'update':
+          if (msg.step === 'completed' && msg.details) {
             onComplete(msg.details);
             ws.close();
-          } else if (msg.step === "failed") {
-            // Transaction failed
-            onError(
-              msg.details?.error || msg.description || "Transaction failed",
-            );
+          } else if (msg.step === 'failed') {
+            // Failed messages are handled via polling fallback
             ws.close();
           } else {
-            // Progress update
             onProgress(
-              msg.step || "processing",
+              msg.step || 'processing',
               msg.progress || 0,
-              msg.description || "Processing...",
+              msg.description || 'Processing...',
             );
           }
           break;
 
-        case "error":
-          onError(msg.message || "WebSocket error occurred");
+        case 'error':
           ws.close();
           break;
 
-        case "not_found":
-          onError("Transaction not found");
+        case 'not_found':
           ws.close();
           break;
-
-        default:
-          console.warn("[WebSocket] Unknown message type:", msg.type);
       }
-    } catch (parseError) {
-      console.error("[WebSocket] Failed to parse message:", parseError);
+    } catch {
+      // Ignore parse errors
     }
   };
 
-  ws.onerror = (event) => {
-    console.error("[WebSocket] Connection error:", event);
-    onError("WebSocket connection failed");
-  };
-
-  ws.onclose = (event) => {
-    console.log("[WebSocket] Connection closed:", event.code, event.reason);
+  ws.onerror = () => {
+    onDisconnect();
   };
 
   return ws;
 }
 
+// ============================================
+// Transaction Tracking — Polling (PUBLIC)
+// ============================================
+
 /**
- * Poll transaction status (fallback when WebSocket fails)
- *
- * @param statusUrl - The status URL path (e.g., "/v1/transactions/xxx")
- * @param baseUrl - The base API URL
- * @param onProgress - Callback for progress updates
- * @param onComplete - Callback when transaction completes
- * @param onError - Callback when an error occurs
- * @param intervalMs - Polling interval in milliseconds (default: 2000)
- * @param timeoutMs - Maximum polling duration (default: 60000)
- * @returns Cleanup function to stop polling
+ * Polls the transaction status endpoint as a fallback when WebSocket is unavailable.
+ * @param statusUrl - Relative status path returned by `confirmWork` / `confirmVersion`.
+ * @param baseUrl - Base HTTP URL (e.g. `"https://ats.allfeat.com"`).
+ * @param onProgress - Callback for intermediate progress updates.
+ * @param onComplete - Callback when the transaction succeeds.
+ * @param onError - Callback when the transaction fails or times out.
+ * @param intervalMs - Polling interval in milliseconds (default: 3000).
+ * @param timeoutMs - Maximum time to poll before timing out (default: 120000).
+ * @returns A cleanup function that stops polling when called.
  */
 export function pollTransactionStatus(
   statusUrl: string,
@@ -541,8 +586,8 @@ export function pollTransactionStatus(
   onProgress: (step: string, progress: number, description: string) => void,
   onComplete: (details: WsStepDetails) => void,
   onError: (error: string) => void,
-  intervalMs: number = 2000,
-  timeoutMs: number = 60000,
+  intervalMs: number = 3000,
+  timeoutMs: number = 120000,
 ): () => void {
   const fullUrl = baseUrl + statusUrl;
   let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -551,30 +596,16 @@ export function pollTransactionStatus(
 
   const cleanup = () => {
     stopped = true;
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
-    }
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
-    }
+    if (intervalId) { clearInterval(intervalId); intervalId = null; }
+    if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
   };
 
   const poll = async () => {
     if (stopped) return;
 
     try {
-      const response = await fetch(fullUrl, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      const response = await fetch(fullUrl, { method: 'GET' });
+      if (!response.ok) return; // Transient, let timeout handle
 
       const data: TransactionStatusResponse = await response.json();
 
@@ -585,317 +616,28 @@ export function pollTransactionStatus(
             tx_hash: data.result.tx_hash,
             block_number: data.result.block_number,
             ats_id: data.result.ats_id,
+            work_id: data.result.work_id,
+            explorer_url: data.result.explorer_url,
+            access_code: data.result.access_code,
           });
         } else {
-          onError(data.result?.error || "Transaction failed");
+          onError(data.result?.error || 'Transaction failed');
         }
       } else {
-        onProgress(
-          data.current_step,
-          data.progress,
-          `Processing: ${data.current_step}`,
-        );
+        onProgress(data.current_step, data.progress, `Processing: ${data.current_step}`);
       }
-    } catch (error) {
-      console.error("[Polling] Error:", error);
-      // Don't stop polling on transient errors, let timeout handle it
+    } catch {
+      // Transient error, let timeout handle
     }
   };
 
-  // Start polling
   intervalId = setInterval(poll, intervalMs);
-  poll(); // Initial poll immediately
+  poll();
 
-  // Set timeout
   timeoutId = setTimeout(() => {
     cleanup();
-    onError("Transaction timed out");
+    onError('Transaction timed out');
   }, timeoutMs);
 
   return cleanup;
-}
-
-/**
- * Parse ATS certificate via proxy endpoint
- *
- * This sends the certificate JSON to the proxy which forwards to web2-platform
- * for server-side parsing.
- *
- * @param proxyEndpoint - The organization's proxy URL
- * @param certificateJson - The certificate JSON string (file content)
- * @returns Parsed certificate data
- * @throws AtsApiException on any error
- */
-export async function parseCertificateViaProxy(
-  proxyEndpoint: string,
-  certificateJson: string,
-  sessionToken?: string,
-): Promise<ParseCertificateResponse> {
-  // Normalize endpoint (remove trailing slash)
-  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
-
-  // Prepare request body with action routing
-  const body: ParseCertificateRequest = {
-    action: "parse-cert",
-    certificate: certificateJson,
-  };
-
-  try {
-    // Build headers with optional Authorization
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (sessionToken) {
-      headers["Authorization"] = `Bearer ${sessionToken}`;
-    }
-
-    const response = await fetch(normalizedEndpoint, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
-
-    // Handle non-OK responses
-    if (!response.ok) {
-      let errorMessage: string;
-      try {
-        const text = await response.text();
-        const errorBody = JSON.parse(text);
-        errorMessage =
-          errorBody.error || errorBody.message || "Certificate parsing failed";
-      } catch {
-        errorMessage = `HTTP ${response.status}`;
-      }
-
-      throw new AtsApiException(
-        errorMessage,
-        ApiErrorCode.CERTIFICATE_PARSE_ERROR,
-        response.status,
-      );
-    }
-
-    // Parse successful response
-    const data = (await response.json()) as ParseCertificateResponse;
-    return data;
-  } catch (error) {
-    // Re-throw AtsApiException as-is
-    if (error instanceof AtsApiException) {
-      throw error;
-    }
-
-    // Handle network errors
-    if (error instanceof TypeError && error.message.includes("fetch")) {
-      throw new AtsApiException(
-        "Network error: Unable to connect to proxy server",
-        ApiErrorCode.NETWORK_ERROR,
-        undefined,
-        error,
-      );
-    }
-
-    // Handle other errors
-    throw new AtsApiException(
-      error instanceof Error ? error.message : "Unknown error occurred",
-      ApiErrorCode.CERTIFICATE_PARSE_ERROR,
-      undefined,
-      error,
-    );
-  }
-}
-
-/**
- * Health check for the Component Service
- * Returns true if the service is reachable
- */
-export async function checkApiHealth(
-  endpoint: string = COMPONENT_SERVICE_URL,
-): Promise<boolean> {
-  try {
-    const normalizedEndpoint = endpoint.replace(/\/+$/, "");
-    const response = await fetch(`${normalizedEndpoint}/health`, {
-      method: "GET",
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Convert a File to base64 encoded string
- */
-export function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Remove the data URL prefix (e.g., "data:audio/mpeg;base64,")
-      const base64 = result.split(",")[1];
-      resolve(base64);
-    };
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.readAsDataURL(file);
-  });
-}
-
-/**
- * Register work via proxy (server-side ZKP)
- *
- * This sends the file and metadata to the server, which handles:
- * - ZKP computation (hashing, proof generation)
- * - Blockchain submission
- * - Certificate generation
- *
- * @param proxyEndpoint - The organization's proxy URL
- * @param data - Work registration data (title, creators, file)
- * @returns Async response with transaction tracking URLs
- * @throws AtsApiException on any error
- */
-export async function registerWork(
-  proxyEndpoint: string,
-  data: {
-    title: string;
-    creators: CreatorRequest[];
-    file: File;
-  },
-): Promise<RegisterWorkResponse> {
-  // Convert file to base64
-  const audio_base64 = await fileToBase64(data.file);
-
-  // Normalize endpoint
-  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
-
-  // Prepare request body
-  const body: RegisterWorkProxyRequest = {
-    action: "register",
-    title: data.title,
-    creators: data.creators,
-    audio_base64,
-    filename: data.file.name,
-  };
-
-  try {
-    const response = await fetch(normalizedEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-
-    // Handle non-OK responses (202 is success for async operations)
-    if (!response.ok && response.status !== 202) {
-      let errorMessage: string;
-      try {
-        const text = await response.text();
-        const errorBody = JSON.parse(text);
-        errorMessage =
-          errorBody.error || errorBody.message || "Registration failed";
-      } catch {
-        errorMessage = `HTTP ${response.status}`;
-      }
-
-      throw new AtsApiException(
-        errorMessage,
-        ApiErrorCode.PROXY_ERROR,
-        response.status,
-      );
-    }
-
-    const responseData = (await response.json()) as RegisterWorkResponse;
-    return responseData;
-  } catch (error) {
-    if (error instanceof AtsApiException) {
-      throw error;
-    }
-
-    if (error instanceof TypeError && error.message.includes("fetch")) {
-      throw new AtsApiException(
-        "Network error: Unable to connect to proxy server",
-        ApiErrorCode.NETWORK_ERROR,
-        undefined,
-        error,
-      );
-    }
-
-    throw new AtsApiException(
-      error instanceof Error ? error.message : "Unknown error occurred",
-      ApiErrorCode.PROXY_ERROR,
-      undefined,
-      error,
-    );
-  }
-}
-
-/**
- * Get presigned URL for certificate download
- *
- * @param proxyEndpoint - The organization's proxy URL
- * @param sessionToken - Session token from createSession()
- * @param workId - The work UUID (from transaction completion)
- * @returns Presigned URL for certificate ZIP download
- * @throws AtsApiException on any error
- */
-export async function downloadCertificateViaProxy(
-  proxyEndpoint: string,
-  sessionToken: string,
-  workId: string,
-): Promise<DownloadCertificateResponse> {
-  const normalizedEndpoint = proxyEndpoint.replace(/\/+$/, "");
-
-  const body: DownloadCertificateRequest = {
-    action: "download-certificate",
-    work_id: workId,
-  };
-
-  try {
-    const response = await fetch(normalizedEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${sessionToken}`,
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      let errorMessage: string;
-      try {
-        const text = await response.text();
-        const errorBody = JSON.parse(text);
-        errorMessage =
-          errorBody.error || errorBody.message || "Certificate download failed";
-      } catch {
-        errorMessage = `HTTP ${response.status}`;
-      }
-
-      throw new AtsApiException(
-        errorMessage,
-        ApiErrorCode.PROXY_ERROR,
-        response.status,
-      );
-    }
-
-    return (await response.json()) as DownloadCertificateResponse;
-  } catch (error) {
-    if (error instanceof AtsApiException) {
-      throw error;
-    }
-
-    if (error instanceof TypeError && error.message.includes("fetch")) {
-      throw new AtsApiException(
-        "Network error: Unable to connect to proxy server",
-        ApiErrorCode.NETWORK_ERROR,
-        undefined,
-        error,
-      );
-    }
-
-    throw new AtsApiException(
-      error instanceof Error ? error.message : "Unknown error occurred",
-      ApiErrorCode.PROXY_ERROR,
-      undefined,
-      error,
-    );
-  }
 }

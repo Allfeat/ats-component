@@ -27,21 +27,21 @@ export default {
   input: 'src/index.ts',
   output: [
     {
-      file: 'dist/allfeat-ats-register.esm.js',
+      file: 'dist/ats-widget.esm.js',
       format: 'esm',
       sourcemap: !production,
       inlineDynamicImports: true,
     },
     {
-      file: 'dist/allfeat-ats-register.cjs.js',
+      file: 'dist/ats-widget.cjs.js',
       format: 'cjs',
       sourcemap: !production,
       inlineDynamicImports: true,
     },
     {
-      file: 'dist/allfeat-ats-register.iife.js',
+      file: 'dist/ats-widget.iife.js',
       format: 'iife',
-      name: 'AllfeatAtsComponent',
+      name: 'AtsWidgetComponent',
       sourcemap: !production,
       inlineDynamicImports: true,
     },

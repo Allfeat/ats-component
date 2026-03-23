@@ -1,0 +1,101 @@
+---
+title: Error Codes
+description: Reference for all API and client error codes emitted by the ATS Widget — descriptions, HTTP statuses, and recommended recovery actions.
+---
+
+Error codes appear in the `code` field of `allfeat:failed` and `allfeat:error` event payloads.
+
+## API Errors
+
+| Code | HTTP Status | Description | Recommended Action |
+|------|-------------|-------------|-------------------|
+| `TOKEN_EXPIRED` | 401 | JWT token has expired | Refresh the token via `setToken()` — handled automatically if you listen to `allfeat:token-expired` |
+| `INVALID_SITE_KEY` | 401 | The `site-key` attribute is missing, invalid, or doesn't match the token's organization | Verify the `site-key` attribute matches your organization's public key from the [Allfeat Dashboard](https://app.allfeat.org) |
+| `FORBIDDEN` | 403 | Token doesn't have permission for this action | Verify `action_type`, `allowed_network`, and `allowed_ats_id` match the widget's configuration |
+| `NOT_FOUND` | 404 | Resource not found | Verify the access code is correct and the work exists on the specified network |
+| `CONFLICT` | 409 | Duplicate or conflicting operation | The work may already be registered or a concurrent operation is in progress |
+| `RATE_LIMITED` | 429 | Too many requests | Wait and retry. The widget handles this internally with exponential backoff |
+| `BAD_REQUEST` | 400 | Invalid request data | Check form data and attributes. Covers 400, 413 (file too large), and 422 (validation) |
+| `SERVER_ERROR` | 5xx | Allfeat API server error | Retry later. If persistent, contact Allfeat support |
+
+## Client Errors
+
+| Code | Description | Recommended Action |
+|------|-------------|-------------------|
+| `NETWORK_ERROR` | Network connectivity issue | Check the user's internet connection. The widget will show an error screen |
+| `UPLOAD_ERROR` | File upload to S3 failed | The widget retries up to 3 times automatically. If still failing, check file size and network |
+| `UNKNOWN_ERROR` | Unexpected error | Log the full event detail and report to Allfeat support if recurring |
+
+## Error Handling Patterns
+
+### Centralized Error Logging
+
+```javascript
+const widget = document.querySelector('ats-widget');
+
+// Log all errors (fatal + non-fatal)
+['allfeat:failed', 'allfeat:error'].forEach(eventName => {
+  widget.addEventListener(eventName, (e) => {
+    console.error(`[ATS ${eventName}]`, e.detail);
+
+    // Send to your monitoring service
+    analytics.track('ats_error', {
+      event: eventName,
+      code: e.detail.code,
+      stage: e.detail.stage,
+      error: e.detail.error,
+    });
+  });
+});
+```
+
+### Conditional Recovery
+
+```javascript
+widget.addEventListener('allfeat:failed', (e) => {
+  switch (e.detail.code) {
+    case 'TOKEN_EXPIRED':
+      // Handled by allfeat:token-expired listener
+      break;
+
+    case 'INVALID_SITE_KEY':
+      showMessage('Configuration error. Please contact support.');
+      break;
+
+    case 'FORBIDDEN':
+      showMessage('You do not have permission to perform this action.');
+      break;
+
+    case 'RATE_LIMITED':
+      showMessage('Too many requests. Please wait a moment.');
+      break;
+
+    case 'NETWORK_ERROR':
+      showMessage('Connection lost. Please check your internet.');
+      break;
+
+    default:
+      showMessage('An unexpected error occurred. Please try again.');
+      widget.reset();
+  }
+});
+```
+
+## The `AtsApiException` Class
+
+When using the widget's API client directly (advanced usage), errors are thrown as `AtsApiException`:
+
+```typescript
+import { AtsApiException, ApiErrorCode } from 'allfeat-ats-component';
+
+try {
+  await someApiCall();
+} catch (err) {
+  if (err instanceof AtsApiException) {
+    console.log(err.code);            // ApiErrorCode enum value
+    console.log(err.httpStatus);      // 401, 403, etc.
+    console.log(err.isRetryable());   // true for NETWORK_ERROR, SERVER_ERROR, RATE_LIMITED
+    console.log(err.isTokenExpired()); // true for TOKEN_EXPIRED
+  }
+}
+```

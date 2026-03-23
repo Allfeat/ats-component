@@ -1,105 +1,104 @@
 /**
- * Allfeat ATS Web Component
- *
- * A framework-agnostic custom element for registering works on the Allfeat blockchain.
+ * Allfeat Register Web Component
  *
  * Usage:
  * ```html
- * <script src="allfeat-ats-register.iife.js"></script>
- * <allfeat-ats-register
- *   site-key="cpk_..."
- *   proxy-endpoint="https://your-org.workers.dev/ats-proxy"
- *   service-url="https://component-service.example.com"
- *   primary-color="#4DB8A8"
- * ></allfeat-ats-register>
+ * <script src="ats-widget.iife.js"></script>
+ * <ats-widget
+ *   token="jwt-token-from-partner"
+ *   ats-url="https://ats.api.allfeat.org"
+ *   mode="register"
+ * ></ats-widget>
  * ```
  */
 
 // Main component
-export { AllfeatAtsRegister } from './allfeat-ats-register';
+export { AllfeatRegister } from './allfeat-register';
 
-// API client for external use
+// API client
 export {
-  // Session management
-  createSession,
-  // Registration flow
-  initRegistration,
-  uploadFileToS3,
-  prepareRegistration,
-  confirmRegistration,
-  // Utilities
+  initWork,
+  prepareWork,
+  confirmWork,
+  initVersionUpload,
+  initVersion,
+  prepareVersion,
+  confirmVersion,
+  uploadFileToS3WithProgress,
+  downloadCertificate,
   subscribeToTransaction,
   pollTransactionStatus,
-  downloadCertificateViaProxy,
-  parseCertificateViaProxy,
-  checkApiHealth,
-  // Constants
-  COMPONENT_SERVICE_URL,
+  fetchAccessWork,
 } from './api/client';
 
+// API types
 export type {
-  // Session types
-  SessionResponse,
-  // Registration flow types
-  InitRegistrationRequest,
-  InitRegistrationResponse,
-  PrepareRegistrationRequest,
-  PrepareRegistrationResponse,
-  ConfirmRegistrationResponse,
-  // Work types
-  WorkRegistrationAsyncResponse,
+  Screen,
+  Mode,
+  Network,
+  CreatorRequest,
+  InitWorkResponse,
+  PrepareWorkResponse,
+  ConfirmWorkResponse,
+  InitVersionUploadResponse,
+  InitVersionResponse,
+  PrepareVersionResponse,
+  ConfirmVersionResponse,
   WsMessage,
   WsMessageType,
   WsStepDetails,
   TransactionStatusResponse,
-  CreatorRequest,
-  DownloadCertificateRequest,
+  TrackingStep,
   DownloadCertificateResponse,
-  ParseCertificateRequest,
-  ParseCertificateResponse,
+  AccessWorkResponse,
 } from './api/types';
 
 export {
   AtsApiException,
   ApiErrorCode,
+  getTrackingSteps,
+  TRACKING_PROGRESS,
 } from './api/types';
 
 // Form types
 export type {
   FormState,
   CreatorFormData,
-  WorkFormData,
   FormErrors,
-  WorkType,
-  ParsedAtsData,
+  FormSubStep,
+  ComponentState,
+  CompletionData,
+  AccessData,
 } from './form/types';
 
 export {
   CREATOR_ROLES,
   createEmptyCreator,
   createDefaultFormState,
+  createDefaultComponentState,
 } from './form/types';
 
 // Validation
 export {
-  validateForm,
-  validateCreator,
-  isValidAtsFile,
-  parseAtsFileViaApi,
   creatorSchema,
   workFormSchema,
 } from './form/schema';
 
 // Event types
 export type {
-  ZkpComputingDetail,
-  BlockchainSubmittingDetail,
-  BlockchainSuccessDetail,
-  ZipReadyDetail,
-  AtsRegisterErrorDetail,
-  StepChangeDetail,
+  ReadyDetail,
+  UploadStartDetail,
+  UploadProgressDetail,
+  UploadCompleteDetail,
+  ConfirmedDetail,
+  StepDetail,
+  CompleteDetail,
+  FailedDetail,
+  TokenExpiredDetail,
+  ErrorDetail,
 } from './utils/events';
 
-export {
-  EVENT_NAMES,
-} from './utils/events';
+export { EVENT_NAMES } from './utils/events';
+
+// Utility helpers
+export { formatFileSize, escapeHtml } from './utils/helpers';

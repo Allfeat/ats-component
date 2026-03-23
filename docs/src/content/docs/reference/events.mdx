@@ -1,0 +1,218 @@
+---
+title: Events Reference
+description: Complete reference for all 10 Custom Events emitted by the ATS Widget — payload types, tracking steps, and TypeScript interfaces.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+All events are dispatched as [`CustomEvent`](https://developer.mozilla.org/en-US/docs/Web/API/CustomEvent) with `bubbles: true` and `composed: true`.
+
+## Event Map
+
+| Event | Payload | Stage |
+|-------|---------|-------|
+| [`allfeat:ready`](#allfeatready) | `{ mode }` | Initialization |
+| [`allfeat:upload-start`](#allfeatupload-start) | `{ filename, size }` | Upload |
+| [`allfeat:upload-progress`](#allfeatupload-progress) | `{ progress, loaded, total }` | Upload |
+| [`allfeat:upload-complete`](#allfeatupload-complete) | `{ filename }` | Upload |
+| [`allfeat:confirmed`](#allfeatconfirmed) | `{ transactionId }` | Confirmation |
+| [`allfeat:step`](#allfeatstep) | `{ step, progress, description? }` | Tracking |
+| [`allfeat:complete`](#allfeatcomplete) | `{ atsId, txHash, blockNumber, explorerUrl, accessCode? }` | Done |
+| [`allfeat:failed`](#allfeatfailed) | `{ error, stage?, code? }` | Error |
+| [`allfeat:token-expired`](#allfeattoken-expired) | `{ pendingAction }` | Auth |
+| [`allfeat:error`](#alleaterror) | `{ stage, error, code?, details? }` | Error |
+
+---
+
+## `allfeat:ready`
+
+Fired once when the widget is mounted and initialized.
+
+```typescript
+interface ReadyDetail {
+  mode: 'register' | 'update' | 'access';
+}
+```
+
+---
+
+## `allfeat:upload-start`
+
+Fired when the file upload to S3 begins.
+
+```typescript
+interface UploadStartDetail {
+  filename: string;
+  size: number;  // bytes
+}
+```
+
+---
+
+## `allfeat:upload-progress`
+
+Fired repeatedly during file upload.
+
+```typescript
+interface UploadProgressDetail {
+  progress: number;  // 0–100
+  loaded: number;    // bytes uploaded
+  total: number;     // total bytes
+}
+```
+
+---
+
+## `allfeat:upload-complete`
+
+Fired when the file upload finishes successfully.
+
+```typescript
+interface UploadCompleteDetail {
+  filename: string;
+}
+```
+
+---
+
+## `allfeat:confirmed`
+
+Fired when the backend has confirmed the submission and a blockchain transaction is initiated.
+
+```typescript
+interface ConfirmedDetail {
+  transactionId: string;
+}
+```
+
+---
+
+## `allfeat:step`
+
+Fired on each tracking step transition during blockchain processing.
+
+```typescript
+interface StepDetail {
+  step: string;
+  progress: number;       // 0–100
+  description?: string;   // Human-readable step label
+}
+```
+
+**Register mode — step order and progress:**
+
+| Step | Progress | Description |
+|------|----------|-------------|
+| `validating` | 5% | Validating work data |
+| `transferring_tokens` | 20% | Transferring tokens |
+| `preparing_transaction` | 40% | Preparing transaction |
+| `signing` | 55% | Signing transaction |
+| `submitting` | 70% | Submitting to blockchain |
+| `confirming` | 85% | Waiting for confirmation |
+| `completed` | 100% | Done |
+
+**Update mode — step order and progress:**
+
+| Step | Progress | Description |
+|------|----------|-------------|
+| `validating` | 5% | Validating work data |
+| `preparing_transaction` | 40% | Preparing transaction |
+| `signing` | 55% | Signing transaction |
+| `submitting` | 70% | Submitting to blockchain |
+| `confirming` | 85% | Waiting for confirmation |
+| `completed` | 100% | Done |
+
+<Aside type="note">
+The `transferring_tokens` step is only present in **register** mode. Update mode skips directly from `validating` to `preparing_transaction`.
+</Aside>
+
+---
+
+## `allfeat:complete`
+
+Fired when the work is successfully registered on the blockchain.
+
+```typescript
+interface CompleteDetail {
+  atsId: number | null;   // Unique ATS work identifier
+  txHash: string;         // Blockchain transaction hash
+  blockNumber: number;    // Block number
+  explorerUrl: string;    // Link to blockchain explorer
+  accessCode?: string;    // Access code (register mode only)
+}
+```
+
+In **access** mode, `txHash` is empty, `blockNumber` is 0, and `explorerUrl` is empty — no transaction is performed.
+
+---
+
+## `allfeat:failed`
+
+Fired on critical errors that stop the operation.
+
+```typescript
+interface FailedDetail {
+  error: string;    // Human-readable error message
+  stage?: string;   // Stage where the error occurred
+  code?: string;    // Machine-readable error code
+}
+```
+
+---
+
+## `allfeat:token-expired`
+
+Fired when a 401 response indicates the JWT token has expired.
+
+```typescript
+interface TokenExpiredDetail {
+  pendingAction: string;  // The action that was interrupted
+}
+```
+
+After receiving this event, call `widget.setToken(newToken)` within **60 seconds** to resume.
+
+---
+
+## `allfeat:error`
+
+Fired for non-fatal, recoverable errors.
+
+```typescript
+interface ErrorDetail {
+  stage: string;
+  error: string;
+  code?: string;
+  details?: unknown;
+}
+```
+
+---
+
+## Listening in TypeScript
+
+```typescript
+import { EVENT_NAMES } from 'allfeat-ats-component';
+import type { CompleteDetail } from 'allfeat-ats-component';
+
+widget.addEventListener(EVENT_NAMES.COMPLETE, ((e: CustomEvent<CompleteDetail>) => {
+  const { atsId, txHash, accessCode } = e.detail;
+}) as EventListener);
+```
+
+### `EVENT_NAMES` Constants
+
+```typescript
+const EVENT_NAMES = {
+  READY: 'allfeat:ready',
+  UPLOAD_START: 'allfeat:upload-start',
+  UPLOAD_PROGRESS: 'allfeat:upload-progress',
+  UPLOAD_COMPLETE: 'allfeat:upload-complete',
+  CONFIRMED: 'allfeat:confirmed',
+  STEP: 'allfeat:step',
+  COMPLETE: 'allfeat:complete',
+  FAILED: 'allfeat:failed',
+  TOKEN_EXPIRED: 'allfeat:token-expired',
+  ERROR: 'allfeat:error',
+};
+```

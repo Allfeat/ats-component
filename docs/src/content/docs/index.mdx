@@ -1,0 +1,187 @@
+---
+title: Allfeat ATS Widget
+description: Integrate blockchain-based audio timestamping into your platform with a plug-and-play web component.
+template: splash
+hero:
+  tagline: Protect audio works on the Allfeat blockchain — directly from your platform.
+  actions:
+    - text: Quick Start
+      link: /guides/quick-start/
+      icon: rocket
+      variant: primary
+    - text: View Reference
+      link: /reference/attributes/
+      icon: open-book
+      variant: secondary
+---
+
+import { Aside, Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Beta">
+The ATS Widget is currently in **beta**. While it has been tested by the Allfeat team, unexpected behavior or bugs may occur. Any feedback during your integration is welcome — please reach out to the Allfeat team.
+</Aside>
+
+## What is the ATS Widget?
+
+The **ATS Widget** is a plug-and-play web component that allows organizations to integrate the **Allfeat Time Stamp (ATS)** service directly into their own platform. Powered by Allfeat's proprietary API, the widget lets your end users register and protect audio works on the Allfeat blockchain — without requiring them to visit Allfeat's portal or to hold an Allfeat account.
+
+<CardGrid>
+  <Card title="Register" icon="add-document">
+    Register a new audio work on the blockchain with metadata, creators, and a digital certificate.
+  </Card>
+  <Card title="Update" icon="pen">
+    Register a new version of an existing work — update contributors, metadata, or the audio file itself.
+  </Card>
+  <Card title="Access" icon="magnifier">
+    Consult the on-chain details of a registered work using its access code.
+  </Card>
+  <Card title="Theming" icon="seti:css">
+    Fully customizable via CSS variables — adapt the widget to match your design system.
+  </Card>
+</CardGrid>
+
+## How It Works
+
+Your organization acts as a **bridge** between your end users and Allfeat. All ATS registrations go through your organization's Allfeat account — your users never interact with Allfeat directly.
+
+This means:
+- **All ATS are registered under your organization's account** on the Allfeat network.
+- **You are responsible for your own user management.** Since Allfeat user accounts are abstracted away, your organization must implement its own logic to identify and manage end users.
+
+## Architecture
+
+The integration involves three actors:
+
+```
+┌─────────────────┐     JWT Token      ┌─────────────────┐
+│  Your Backend    │◄──────────────────►│   Allfeat API    │
+│  (secret_key)    │  POST /v1/sessions │  ats.api.        │
+│                  │                    │  allfeat.org     │
+└────────┬────────┘                    └────────┬────────┘
+         │ token                                │
+         ▼                                      │
+┌─────────────────┐                             │
+│  Your Frontend   │                             │
+│  <ats-widget     │  Upload + API calls         │
+│   site-key="…">  │────────────────────────────►│
+│                  │                             │
+└─────────────────┘                             │
+```
+
+1. **Your frontend** includes the widget with your `site-key` attribute (public key)
+2. **Your backend** calls the Allfeat API with your `secret_key` to obtain a **JWT session token**
+3. **Your frontend** injects this token into the widget via `setToken()`
+4. **The widget** communicates directly with the Allfeat API for upload and blockchain tracking
+
+<Aside type="tip">
+The JWT token has a limited lifetime (~5 min) and is **one-time-use**. The widget emits an `allfeat:token-expired` event when it expires, allowing you to refresh it automatically.
+</Aside>
+
+## Access Codes
+
+When a work is registered, the `allfeat:complete` event returns an `accessCode` — a unique 68-character string (format: `atc_` + 64 hex characters) that acts as a **capability token** for that specific work. The access code is the key to all subsequent operations: updating a version or consulting work details.
+
+The access code is **designed to be given to the end user** who registered the work. It is their proof of registration and their means to interact with their work later. Your service may optionally store it as a backup, but the primary holder should be the end user.
+
+<Aside type="caution">
+Anyone with the access code can interact with the work (update, access). Treat it like a password — it should be communicated securely to the end user.
+</Aside>
+
+### User Management
+
+Since Allfeat user accounts are abstracted, your organization decides how to manage users and their works. Here are two common approaches:
+
+**Approach 1 — User holds the access code (recommended)**
+
+The access code is displayed to the user after registration (the widget shows it on the success screen). The user is responsible for storing it. When they want to update or consult their work, they provide the access code themselves.
+
+Your service only needs to store the `atsId` for reference:
+
+```
+Your Database
+┌──────────┬────────┬────────────┐
+│ user_id  │ ats_id │ registered │
+├──────────┼────────┼────────────┤
+│ user_123 │ 42     │ 2025-06-01 │
+│ user_456 │ 78     │ 2025-07-15 │
+└──────────┴────────┴────────────┘
+```
+
+**Approach 2 — Service stores the access code as backup**
+
+Your service stores the access code alongside the user mapping. This enables you to provide a smoother UX (e.g., pre-filling the access code in the update flow) but adds responsibility for securing those codes.
+
+```
+Your Database
+┌──────────┬────────┬──────────────────────┬────────────┐
+│ user_id  │ ats_id │ access_code          │ registered │
+├──────────┼────────┼──────────────────────┼────────────┤
+│ user_123 │ 42     │ atc_a1b2c3d4...      │ 2025-06-01 │
+│ user_456 │ 78     │ atc_e5f6a7b8...      │ 2025-07-15 │
+└──────────┴────────┴──────────────────────┴────────────┘
+```
+
+Both approaches work — choose based on your product needs and security posture. Allfeat only sees your organization's account regardless.
+
+## Pricing
+
+The ATS Widget is a **B2B product** with two cost components:
+
+### 1. Widget Subscription
+
+Access to the ATS Widget requires an **active subscription** with the Allfeat team. This covers widget access, API usage, and support. Contact the Allfeat team for pricing details.
+
+### 2. Per-Registration Fees
+
+Each ATS registration or version update incurs additional fees billed to your organization's credit balance:
+
+| Fee | Description |
+|-----|-------------|
+| **Network fee** | Blockchain transaction cost, estimated via dry-run simulation |
+| **Deposit** | On-chain storage deposit for the work or version |
+| **Service fee** | Allfeat platform fee (applied as basis points on the transaction) |
+
+The **total price** is the sum of all three. Fees are deducted from your organization's credit balance automatically. The session creation will fail if your balance is insufficient.
+
+<Aside type="note">
+Pricing details are returned during the `prepare` phase of the registration flow. The widget handles all pricing logic internally — your integration doesn't need to manage credits directly.
+</Aside>
+
+## Distribution
+
+The widget is distributed as a static JavaScript file via CDN:
+
+```html
+<script src="https://cdn.allfeat.org/ats/v1/ats-widget.iife.js"></script>
+```
+
+Include it with a `<script>` tag — no package manager required. The `<ats-widget>` custom element is immediately available.
+
+Alternatively, install via npm for bundled projects (coming soon):
+
+```bash
+bun add allfeat-ats-component # not yet published
+```
+
+```typescript
+import { AllfeatRegister } from 'allfeat-ats-component';
+```
+
+## Prerequisites
+
+- **An Allfeat account with an organization** — create a standalone account on [app.allfeat.org](https://app.allfeat.org), then contact the Allfeat team to activate an organization linked to your account with the **ATS widget** enabled (subscription-based)
+- **API keys** — once your organization is set up, generate your `site_key` (`cpk_...`) and `secret_key` (`csk_...`) from the Dashboard
+- **A funded credit balance** — ensure your organization has sufficient credits for registrations
+- **Domain allowlist** — configure your allowed domains in the Dashboard to authorize widget usage from your site
+- **A backend** capable of making HTTP calls to obtain JWT session tokens
+- **Your own user management** — since Allfeat accounts are abstracted, you handle user identity
+- **Modern browser** supporting Web Components (Chrome, Firefox, Safari, Edge)
+
+## Next Steps
+
+<CardGrid>
+  <LinkCard title="Quick Start" href="/guides/quick-start/" description="Integrate the widget in 5 minutes with step-by-step instructions." />
+  <LinkCard title="Authentication" href="/guides/authentication/" description="Set up JWT token management and secure your integration." />
+  <LinkCard title="Events & Callbacks" href="/guides/events/" description="Track the full widget lifecycle with Custom Events." />
+  <LinkCard title="Styling & Theming" href="/guides/styling/" description="Match the widget to your design system with CSS variables." />
+</CardGrid>

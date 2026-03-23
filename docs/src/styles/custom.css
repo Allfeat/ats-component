@@ -1,0 +1,72 @@
+/* Dark theme (default in Starlight) */
+:root {
+	--sl-color-accent-low: #003d2f;
+	--sl-color-accent: #00b18c;
+	--sl-color-accent-high: #80d8c6;
+	--sl-color-white: #ffffff;
+	--sl-color-gray-1: #d5d5d5;
+	--sl-color-gray-2: #9ca3af;
+	--sl-color-gray-3: #585858;
+	--sl-color-gray-4: #4b5563;
+	--sl-color-gray-5: #262626;
+	--sl-color-gray-6: #191919;
+	--sl-color-black: #151515;
+	--sl-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Light theme */
+:root[data-theme='light'] {
+	--sl-color-accent-low: #ccf0e6;
+	--sl-color-accent: #008f6f;
+	--sl-color-accent-high: #003d2f;
+	--sl-color-white: #171717;
+	--sl-color-gray-1: #202020;
+	--sl-color-gray-2: #585858;
+	--sl-color-gray-3: #9ca3af;
+	--sl-color-gray-4: #a19f95;
+	--sl-color-gray-5: #d5d5d5;
+	--sl-color-gray-6: #e5e5e5;
+	--sl-color-black: #edebe7;
+}
+
+/* Hero section */
+.hero {
+	border-bottom: 1px solid var(--sl-color-gray-5);
+	padding-bottom: 2rem;
+}
+
+/* Card styling */
+.sl-link-card {
+	border-color: var(--sl-color-gray-5);
+	transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sl-link-card:hover {
+	border-color: var(--sl-color-accent);
+	box-shadow: 0 0 0 1px var(--sl-color-accent);
+}
+
+/* Code blocks */
+pre {
+	border: 1px solid var(--sl-color-gray-5) !important;
+	border-radius: 8px !important;
+}
+
+/* Tables */
+table {
+	font-size: 0.9rem;
+}
+
+th {
+	background-color: var(--sl-color-gray-6);
+}
+
+/* Aside improvements */
+.starlight-aside {
+	border-radius: 8px;
+}
+
+/* Logo sizing */
+.site-title img {
+	height: 2rem;
+}

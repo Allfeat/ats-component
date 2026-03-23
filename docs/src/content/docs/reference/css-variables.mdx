@@ -1,0 +1,95 @@
+---
+title: CSS Variables
+description: Complete list of 20+ CSS custom properties for theming the ATS Widget — colors, text, backgrounds, borders, shadows, typography, and animations.
+---
+
+All variables are set on the `ats-widget` element and inherited by the Shadow DOM.
+
+## Colors
+
+### Primary
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `--ats-primary` | `#4DB8A8` | Primary brand color (buttons, links, active states) |
+| `--ats-primary-hover` | *auto* | Primary color on hover — **auto-calculated** (10% darker than `--ats-primary`) |
+| `--ats-primary-light` | *auto* | Light primary background — **auto-calculated** (10% opacity blend of `--ats-primary`) |
+
+> **Note:** You only need to set `--ats-primary`. The widget automatically generates the hover and light variants at runtime. You can still override them manually if needed.
+
+### Text
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `--ats-text` | `#1a1a1a` | Main text color |
+| `--ats-text-secondary` | `#666666` | Secondary text (labels, hints) |
+| `--ats-text-muted` | `#4a5568` | Muted text (placeholders, disabled) |
+
+### Backgrounds
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `--ats-background` | `#ffffff` | Main background |
+| `--ats-background-secondary` | `#f5f5f5` | Secondary background (cards, sections) |
+
+### Status Colors
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `--ats-error` | `#dc2626` | Error text and icons |
+| `--ats-error-light` | `#fef2f2` | Error background |
+| `--ats-success` | `#16a34a` | Success text and icons |
+| `--ats-success-light` | `#f0fdf4` | Success background |
+| `--ats-warning` | `#d97706` | Warning text and icons |
+| `--ats-warning-light` | `#fffbeb` | Warning background |
+
+## Layout
+
+### Borders & Shapes
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `--ats-border` | `#e0e0e0` | Border color |
+| `--ats-radius` | `8px` | Default border radius |
+| `--ats-radius-lg` | `12px` | Large border radius (cards, modals) |
+
+### Shadows
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `--ats-shadow` | `0 1px 3px rgba(0,0,0,0.1)` | Default shadow |
+| `--ats-shadow-lg` | `0 4px 6px rgba(0,0,0,0.1)` | Elevated shadow |
+
+## Typography & Animation
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `--ats-font-family` | `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif` | Font stack |
+| `--ats-transition` | `150ms ease` | Default transition timing |
+
+## Quick Copy
+
+```css
+ats-widget {
+  /* Only --ats-primary is needed; hover and light are auto-calculated */
+  --ats-primary: #4DB8A8;
+  --ats-text: #1a1a1a;
+  --ats-text-secondary: #666666;
+  --ats-text-muted: #4a5568;
+  --ats-background: #ffffff;
+  --ats-background-secondary: #f5f5f5;
+  --ats-border: #e0e0e0;
+  --ats-radius: 8px;
+  --ats-radius-lg: 12px;
+  --ats-error: #dc2626;
+  --ats-error-light: #fef2f2;
+  --ats-success: #16a34a;
+  --ats-success-light: #f0fdf4;
+  --ats-warning: #d97706;
+  --ats-warning-light: #fffbeb;
+  --ats-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --ats-shadow-lg: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --ats-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --ats-transition: 150ms ease;
+}
+```

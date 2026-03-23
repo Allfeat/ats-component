@@ -1,9 +1,0 @@
-[server]
-port = 3333
-host = "0.0.0.0"
-
-[backend]
-api_url = "http://localhost:13002"
-api_key = ""
-passphrase = ""
-network = "testnet"

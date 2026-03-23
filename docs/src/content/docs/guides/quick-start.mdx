@@ -1,0 +1,202 @@
+---
+title: Quick Start
+description: Step-by-step guide to integrate the Allfeat ATS Widget into your platform in 5 minutes — backend token setup, HTML integration, and event handling.
+---
+
+import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Installation
+
+Add the script to your HTML page from the Allfeat CDN:
+
+```html
+<script src="https://cdn.allfeat.org/ats/v1/ats-widget.iife.js"></script>
+```
+
+The `<ats-widget>` element is immediately available.
+
+## Integration
+
+<Steps>
+
+1. ### Create the token on your backend
+
+   Call the Allfeat API from your server to obtain a JWT session token.
+
+   <Tabs>
+     <TabItem label="Node.js (Express)">
+       ```typescript title="backend/routes/ats-token.ts"
+       app.post('/api/ats-token', async (req, res) => {
+         const response = await fetch('https://ats.api.allfeat.org/v1/sessions', {
+           method: 'POST',
+           headers: {
+             'Content-Type': 'application/json',
+             'Origin': 'https://yoursite.com', // domain where the widget is embedded (validated against your allowlist)
+           },
+           body: JSON.stringify({
+             secret_key: process.env.ALLFEAT_SECRET_KEY,
+             action_type: 'register',
+             allowed_network: 'testnet',
+           }),
+         });
+
+         if (!response.ok) {
+           const error = await response.json();
+           return res.status(response.status).json(error);
+         }
+
+         const { token, expires_in } = await response.json();
+         res.json({ token });
+       });
+       ```
+     </TabItem>
+     <TabItem label="cURL">
+       ```bash
+       curl -X POST https://ats.api.allfeat.org/v1/sessions \
+         -H "Content-Type: application/json" \
+         -H "Origin: https://yoursite.com" \
+         -d '{
+           "secret_key": "csk_your_secret_key",
+           "action_type": "register",
+           "allowed_network": "testnet"
+         }'
+       ```
+
+       Response:
+       ```json
+       {
+         "token": "eyJhbGciOi...",
+         "expires_in": 300
+       }
+       ```
+     </TabItem>
+   </Tabs>
+
+   <Aside type="caution">
+   Never expose your `secret_key` on the client side. The call to `/v1/sessions` must **always** be made from your backend.
+   </Aside>
+
+2. ### Add the widget to your HTML
+
+   ```html title="index.html"
+   <ats-widget
+     id="ats-widget"
+     site-key="cpk_your_public_key"
+     ats-url="https://ats.api.allfeat.org"
+     network="testnet"
+     mode="register"
+   ></ats-widget>
+   ```
+
+3. ### Inject the token on the frontend
+
+   ```javascript title="app.js"
+   const widget = document.getElementById('ats-widget');
+
+   // Fetch the token from your backend
+   const { token } = await fetch('/api/ats-token', {
+     method: 'POST',
+     credentials: 'include',
+   }).then(r => r.json());
+
+   // Pass the token to the widget
+   widget.setToken(token);
+   ```
+
+4. ### Listen to events
+
+   ```javascript title="app.js"
+   // Registration successful
+   widget.addEventListener('allfeat:complete', (e) => {
+     const { atsId, txHash, accessCode } = e.detail;
+     console.log(`Work protected! ATS #${atsId}`);
+
+     // The access code is shown to the user on the success screen.
+     // Optionally save it as a backup on your side.
+     await saveToDatabase({ atsId, txHash });
+   });
+
+   // Automatic token renewal
+   widget.addEventListener('allfeat:token-expired', async () => {
+     const { token } = await fetch('/api/ats-token', {
+       method: 'POST',
+       credentials: 'include',
+     }).then(r => r.json());
+     widget.setToken(token);
+   });
+
+   // Error handling
+   widget.addEventListener('allfeat:failed', (e) => {
+     console.error('Failed:', e.detail.error);
+   });
+   ```
+
+</Steps>
+
+<Aside type="tip">
+The `accessCode` returned in the `allfeat:complete` event is the end user's key to interact with their work later (update, access). The widget displays it on the success screen for the user to save. Your service may optionally store it as a backup — see [User Management](/#user-management) for details.
+</Aside>
+
+## Full Example
+
+```html title="index.html"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Protect a Work</title>
+  <script src="https://cdn.allfeat.org/ats/v1/ats-widget.iife.js"></script>
+</head>
+<body>
+
+  <div style="max-width: 640px; margin: 2rem auto;">
+    <ats-widget
+      id="ats-widget"
+      site-key="cpk_your_public_key"
+      ats-url="https://ats.api.allfeat.org"
+      network="testnet"
+      mode="register"
+    ></ats-widget>
+  </div>
+
+  <script>
+    const widget = document.getElementById('ats-widget');
+
+    async function getToken() {
+      const res = await fetch('/api/ats-token', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const { token } = await res.json();
+      return token;
+    }
+
+    // Initialize
+    getToken().then(token => widget.setToken(token));
+
+    // Token expired → refresh
+    widget.addEventListener('allfeat:token-expired', async () => {
+      widget.setToken(await getToken());
+    });
+
+    // Success
+    widget.addEventListener('allfeat:complete', (e) => {
+      const { atsId, accessCode, txHash } = e.detail;
+      console.log(`ATS #${atsId} registered — TX: ${txHash}`);
+      // Access code is displayed to the user — optionally save as backup
+    });
+
+    // Error
+    widget.addEventListener('allfeat:failed', (e) => {
+      console.error('Error:', e.detail);
+    });
+  </script>
+
+</body>
+</html>
+```
+
+<Aside type="note">
+Replace `cpk_your_public_key` with your actual site key from the [Allfeat Dashboard](https://app.allfeat.org).
+</Aside>

@@ -1,0 +1,190 @@
+---
+title: Authentication
+description: How to create JWT session tokens, handle token renewal, configure domain allowlists, and secure your ATS Widget integration.
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The ATS Widget uses **JWT session tokens** to authenticate your organization's actions with the Allfeat API. This ensures only requests authorized by your platform can register works — all under your organization's Allfeat account.
+
+<Aside type="note">
+Your organization acts as a bridge between your end users and Allfeat. Since Allfeat user accounts are abstracted, you are responsible for implementing your own user management logic on your side.
+</Aside>
+
+## Authentication Flow
+
+```
+User → Your Frontend → Your Backend → Allfeat API
+                          │                  │
+                          │ POST /v1/sessions │
+                          │ secret_key        │
+                          │──────────────────►│
+                          │                   │
+                          │◄──────────────────│
+                          │  { token }        │
+                          │                   │
+        ◄─────────────────│                   │
+              token                           │
+        │                                     │
+        │ widget.setToken(token)              │
+        │                                     │
+        │ Widget uses the token               │
+        │ for all API requests                │
+        │────────────────────────────────────►│
+```
+
+## Creating a Token
+
+<Steps>
+
+1. ### Backend call to the Allfeat API
+
+   <Tabs>
+     <TabItem label="Node.js">
+       ```typescript title="backend/routes/ats-token.ts"
+       app.post('/api/ats-token', async (req, res) => {
+         // Authenticate the user on YOUR side first
+         const user = await getAuthenticatedUser(req);
+         if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+         const response = await fetch('https://ats.api.allfeat.org/v1/sessions', {
+           method: 'POST',
+           headers: {
+             'Content-Type': 'application/json',
+             'Origin': 'https://yoursite.com', // domain where the widget is embedded
+           },
+           body: JSON.stringify({
+             secret_key: process.env.ALLFEAT_SECRET_KEY,
+             action_type: 'register',       // or 'update_version' or 'access'
+             allowed_network: 'testnet',     // or 'mainnet'
+             // allowed_ats_id: 42,          // optional, restricts to a specific work
+           }),
+         });
+
+         if (!response.ok) {
+           const error = await response.json();
+           return res.status(response.status).json(error);
+         }
+
+         const { token, expires_in } = await response.json();
+         res.json({ token });
+       });
+       ```
+     </TabItem>
+     <TabItem label="cURL">
+       ```bash
+       curl -X POST https://ats.api.allfeat.org/v1/sessions \
+         -H "Content-Type: application/json" \
+         -H "Origin: https://yoursite.com" \
+         -d '{
+           "secret_key": "csk_your_secret_key",
+           "action_type": "register",
+           "allowed_network": "testnet"
+         }'
+       ```
+
+       Response:
+       ```json
+       {
+         "token": "eyJhbGciOi...",
+         "expires_in": 300
+       }
+       ```
+     </TabItem>
+   </Tabs>
+
+2. ### Pass the token to the widget
+
+   ```javascript
+   widget.setToken(token);
+   ```
+
+   <Aside type="caution">
+   Always use `setToken()` instead of the `token=""` HTML attribute. The HTML attribute is visible in the DOM and could be inspected by the user.
+   </Aside>
+
+</Steps>
+
+## Session Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `secret_key` | string | Yes | Your organization's secret key (`csk_...`) |
+| `action_type` | string | Yes | `"register"`, `"update_version"`, or `"access"` |
+| `allowed_network` | string | Yes | `"testnet"` or `"mainnet"` |
+| `allowed_ats_id` | number | No | Restricts the token to a specific ATS work ID |
+
+### Required Headers
+
+| Header | Description |
+|--------|-------------|
+| `Content-Type` | `application/json` |
+| `Origin` | Must match one of the allowed domains configured for your organization in the [Allfeat Dashboard](https://app.allfeat.org). |
+
+### Action Types
+
+| Action | Usage | Description |
+|--------|-------|-------------|
+| `register` | `mode="register"` | Create a new ATS work |
+| `update_version` | `mode="update"` | Register a new version of an existing work |
+| `access` | `mode="access"` | Consult an existing work's details |
+
+## One-Time-Use Tokens
+
+<Aside type="caution" title="Important">
+Each JWT token is **one-time-use**: its JTI (JWT ID) is consumed on the first `init` API call. This prevents replay attacks and ensures each registration flow is unique.
+</Aside>
+
+If you need to restart a flow from scratch (e.g., user abandons and retries), you must request a **new token** from your backend. The widget handles this automatically when it emits `allfeat:token-expired`.
+
+## Automatic Token Renewal
+
+The JWT token expires after ~5 minutes. When the widget detects a **401 response**, it:
+
+1. Pauses the current operation
+2. Emits the `allfeat:token-expired` event with a `pendingAction` field
+3. Waits for a new token via `setToken()` (timeout: **60 seconds**)
+4. Automatically retries the failed request
+
+```javascript
+widget.addEventListener('allfeat:token-expired', async (e) => {
+  console.log('Token expired during:', e.detail.pendingAction);
+
+  // Call your backend for a new token
+  const { token } = await fetch('/api/ats-token', {
+    method: 'POST',
+    credentials: 'include',
+  }).then(r => r.json());
+
+  // The widget automatically retries the pending action
+  widget.setToken(token);
+});
+```
+
+<Aside type="tip">
+The `pendingAction` field indicates which action was interrupted (e.g., `"register"`, `"update"`, `"access"`, `"download"`). This can be useful for logging and analytics.
+</Aside>
+
+## Domain Allowlist
+
+The Allfeat API validates the `Origin` header against your organization's **domain allowlist** on every session creation. Configure your allowed domains in the [Allfeat Dashboard](https://app.allfeat.org).
+
+Examples of domain patterns:
+- `yoursite.com` — exact match
+- `*.yoursite.com` — wildcard subdomain match
+
+If the `Origin` header doesn't match any allowed domain, the session creation will be rejected with a **403 Forbidden** error.
+
+## Credit Balance Check
+
+Session creation also verifies that your organization has a **sufficient credit balance** to cover at least one registration. If the balance is too low, the API returns an error. Top up your credits in the [Allfeat Dashboard](https://app.allfeat.org).
+
+## Security Best Practices
+
+- **Never** expose your `secret_key` on the client side
+- **Always** create tokens from your backend
+- **Verify the user's identity** on your backend before issuing a token
+- **Restrict `action_type`** to the minimum required for the operation
+- **Restrict `allowed_network`** to the network your application uses
+- For update mode, verify on your backend that the requesting user is the one who originally registered the work before issuing a token
+- Use `allowed_ats_id` when possible to limit the token's scope to a specific work

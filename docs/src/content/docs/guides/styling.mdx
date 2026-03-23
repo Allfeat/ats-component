@@ -1,0 +1,112 @@
+---
+title: Styling & Theming
+description: Customize the ATS Widget's colors, typography, borders, and shadows using CSS custom properties to match your design system.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The widget uses **Shadow DOM** for style encapsulation. You can customize it through **CSS variables** exposed on the element.
+
+## CSS Variables
+
+Apply your styles directly on the `ats-widget` selector:
+
+```css
+ats-widget {
+  /* Primary color — hover and light variants are auto-calculated */
+  --ats-primary: #4DB8A8;
+
+  /* Text */
+  --ats-text: #1a1a1a;
+  --ats-text-secondary: #666666;
+  --ats-text-muted: #4a5568;
+
+  /* Backgrounds */
+  --ats-background: #ffffff;
+  --ats-background-secondary: #f5f5f5;
+
+  /* Borders */
+  --ats-border: #e0e0e0;
+  --ats-radius: 8px;
+  --ats-radius-lg: 12px;
+
+  /* Typography */
+  --ats-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Animation */
+  --ats-transition: 150ms ease;
+
+  /* Shadows */
+  --ats-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --ats-shadow-lg: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+```
+
+<Aside type="tip">
+You only need to set `--ats-primary` to customize the brand color. The widget **automatically generates** `--ats-primary-hover` (10% darker) and `--ats-primary-light` (10% opacity blend) from it.
+</Aside>
+
+<Aside type="note">
+See the full list in the [CSS Variables Reference](/reference/css-variables/).
+</Aside>
+
+## Theme Examples
+
+<Tabs>
+  <TabItem label="Dark mode">
+    ```css
+    @media (prefers-color-scheme: dark) {
+      ats-widget {
+        --ats-text: #f9fafb;
+        --ats-text-secondary: #d1d5db;
+        --ats-background: #1f2937;
+        --ats-background-secondary: #374151;
+        --ats-border: #4b5563;
+        --ats-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="Custom color">
+    ```css
+    /* Purple theme — only --ats-primary is needed */
+    ats-widget {
+      --ats-primary: #7c3aed;
+    }
+    ```
+  </TabItem>
+  <TabItem label="Minimal radius">
+    ```css
+    ats-widget {
+      --ats-radius: 4px;
+      --ats-radius-lg: 6px;
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+## Sizing
+
+The widget takes **100% of its container's width**. Control its size through the parent:
+
+```html
+<!-- Fixed width -->
+<div style="max-width: 600px; margin: 0 auto;">
+  <ats-widget site-key="..." ats-url="..."></ats-widget>
+</div>
+
+<!-- Full width in a grid -->
+<div class="grid-col-span-2">
+  <ats-widget site-key="..." ats-url="..."></ats-widget>
+</div>
+```
+
+## CSS Framework Compatibility
+
+The widget works with Tailwind, Bootstrap, or any other CSS framework since it uses Shadow DOM. External styles don't affect the widget and vice versa.
+
+To modify the widget's appearance, use only the documented CSS variables.
+
+## Responsive Behavior
+
+The widget adapts its layout at the **480px** breakpoint for mobile devices.

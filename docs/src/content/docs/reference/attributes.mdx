@@ -1,0 +1,213 @@
+---
+title: Attributes & Methods
+description: Complete reference for the ATS Widget's HTML attributes, JavaScript properties, methods, constants, form validation rules, and TypeScript exports.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## HTML Attributes
+
+Set these directly on the `<ats-widget>` element.
+
+| Attribute | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `site-key` | `string` | Yes | — | Your organization's public key (`cpk_...`) |
+| `ats-url` | `string` | Yes | — | Base URL of the ATS API (`https://ats.api.allfeat.org`) |
+| `network` | `"testnet" \| "mainnet"` | No | `"testnet"` | Blockchain network to use |
+| `mode` | `"register" \| "update" \| "access"` | No | `"register"` | Operation mode |
+| `token` | `string` | No | — | JWT token (prefer `setToken()` instead — see [Authentication](/guides/authentication/)) |
+
+### Example
+
+```html
+<ats-widget
+  site-key="cpk_your_public_key"
+  ats-url="https://ats.api.allfeat.org"
+  network="testnet"
+  mode="register"
+></ats-widget>
+```
+
+<Aside type="note">
+In **update** and **access** modes, the work is identified by the **access code** entered by the user in the widget's form — not by an HTML attribute.
+</Aside>
+
+## JavaScript Properties
+
+Read-only accessors that reflect the current attribute values.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `siteKey` | `string` | Current `site-key` value |
+| `atsUrl` | `string` | Current `ats-url` value |
+| `token` | `string` | Current token value |
+| `network` | `'testnet' \| 'mainnet'` | Current network |
+| `mode` | `'register' \| 'update' \| 'access'` | Current operation mode |
+| `maxFileSize` | `number` | Maximum file size in bytes (fetched from API at startup) |
+
+## Methods
+
+### `setToken(token: string): void`
+
+Set the JWT authentication token. This is the **recommended** way to pass the token, as opposed to the HTML attribute. See [Authentication](/guides/authentication/) for details.
+
+```javascript
+const widget = document.querySelector('ats-widget');
+widget.setToken('eyJhbGciOi...');
+```
+
+When called after an `allfeat:token-expired` event, the widget automatically retries the failed request.
+
+### `reset(): void`
+
+Reset the widget to its initial state. Clears the form, any error state, and returns to the first step.
+
+```javascript
+widget.reset();
+```
+
+### `getState(): object`
+
+Returns the widget's current internal state. Useful for debugging and analytics.
+
+```javascript
+const state = widget.getState();
+// {
+//   screen: 'FORM' | 'UPLOAD' | 'CONFIRMING' | 'TRACKING' | 'COMPLETE' | 'FAILED',
+//   jobId?: string,
+//   transactionId?: string,
+//   atsId?: number | null,
+//   accessCode?: string,
+// }
+```
+
+## Observed Attributes
+
+The widget reacts to changes on these attributes: `site-key`, `token`, `ats-url`, `network`, `mode`.
+
+You can update attributes dynamically:
+
+```javascript
+// Switch to mainnet
+widget.setAttribute('network', 'mainnet');
+
+// Switch to update mode — the widget auto-resets when mode changes
+widget.setAttribute('mode', 'update');
+```
+
+## Constants & Limits
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| Max creators | 20 | Maximum number of creators per work |
+| Max title length | 200 characters | Maximum length of the work title |
+| Default max file size | 50 MB | Default maximum audio file size (overridden by API response) |
+| Upload retries | 3 | Upload retry attempts with exponential backoff (1s, 2s, 4s) |
+| Polling interval | 3 seconds | Transaction status polling interval |
+| Polling timeout | 120 seconds | Maximum time waiting for blockchain confirmation |
+| Token refresh timeout | 60 seconds | Time the widget waits for a new token before failing |
+| Access code format | `atc_` + 64 hex chars | 68-character capability token for work access |
+| Access code poll | 10 attempts / 2s | Polling for access code after registration |
+
+## Form Validation
+
+The widget validates form data using [Zod](https://zod.dev/) schemas. Here are the validation rules:
+
+### Creator Fields
+
+| Field | Rule | Details |
+|-------|------|---------|
+| `fullName` | Required | Trimmed, max 255 characters |
+| `email` | Required | Must be a valid email, max 255 characters |
+| `roles` | Required | At least 1 role must be selected |
+| `ipi` | Optional | Must match `/^[0-9]{1,11}$/` (1–11 digits) |
+| `isni` | Optional | Must match `/^[0-9]{15}[0-9X]$/` (15 digits + digit or X, whitespace stripped) |
+
+### Available Roles
+
+4 roles are available: **Author**, **Composer**, **Arranger**, **Adapter**.
+
+### Form Sub-Steps
+
+The form wizard progresses through these sub-steps depending on the mode:
+
+**Register mode:**
+| Sub-step | Description |
+|----------|-------------|
+| `file` | Audio file selection (required) |
+| `title` | Work title input |
+| `creators` | Creator details (name, email, roles, IPI/ISNI) |
+| `review` | Summary before submission |
+
+**Update mode:**
+| Sub-step | Description |
+|----------|-------------|
+| `access_code` | Access code entry + API verification |
+| `file` | Audio file selection (optional — can skip to reuse existing) |
+| `title` | Work title (pre-filled from existing work) |
+| `creators` | Creator details (pre-filled from existing work) |
+| `review` | Summary before submission |
+
+**Access mode:**
+| Sub-step | Description |
+|----------|-------------|
+| `access_code` | Access code entry — triggers work lookup |
+
+## TypeScript
+
+When using the ESM or CJS bundle, you get full type definitions:
+
+```typescript
+import { AllfeatRegister, EVENT_NAMES } from 'allfeat-ats-component';
+
+const widget = document.querySelector('ats-widget') as AllfeatRegister;
+
+widget.addEventListener(EVENT_NAMES.COMPLETE, ((e: CustomEvent) => {
+  const { atsId, txHash, accessCode } = e.detail;
+}) as EventListener);
+```
+
+### Exported Types
+
+```typescript
+import type {
+  AllfeatRegister,       // The custom element class
+  CreatorFormData,       // Creator data shape
+  FormState,             // Full form data shape
+  FormSubStep,           // 'file' | 'title' | 'creators' | 'review' | 'access_code'
+  ComponentState,        // Full component state machine
+  CompletionData,        // Post-registration data
+  AccessData,            // Access mode response data
+  // Event detail types
+  ReadyDetail,
+  UploadStartDetail,
+  UploadProgressDetail,
+  UploadCompleteDetail,
+  ConfirmedDetail,
+  StepDetail,
+  CompleteDetail,
+  FailedDetail,
+  TokenExpiredDetail,
+  ErrorDetail,
+  // API types
+  CreatorRequest,
+  InitWorkResponse,
+  PrepareWorkResponse,
+  ConfirmWorkResponse,
+  AccessWorkResponse,
+  TrackingStep,
+} from 'allfeat-ats-component';
+
+import {
+  EVENT_NAMES,             // Event name constants
+  CREATOR_ROLES,           // ['Author', 'Composer', 'Arranger', 'Adapter']
+  TRACKING_PROGRESS,       // Step-to-progress mapping
+  ApiErrorCode,            // Error code enum
+  AtsApiException,         // Structured error class
+  getTrackingSteps,        // Returns tracking steps for a given mode
+  creatorSchema,           // Zod creator validator
+  workFormSchema,          // Zod form validator
+  createEmptyCreator,      // Factory for blank creator
+  createDefaultFormState,  // Factory for default form state
+} from 'allfeat-ats-component';
+```

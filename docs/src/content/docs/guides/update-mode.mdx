@@ -1,0 +1,137 @@
+---
+title: Update Mode
+description: Register a new version of an existing work — update contributors, metadata, or the audio file using the ATS Widget's update mode.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Update mode lets your end users register a **new version** of a work already on the blockchain. Common use cases include:
+
+- The work was registered as a **work in progress** and a final version is now ready
+- **Contributors have changed** — new creators joined or existing ones were removed
+- The **metadata needs updating** (roles, identifiers like IPI/ISNI)
+
+## How It Works
+
+In update mode, the work is identified by its **access code** — the unique 68-character string (`atc_...`) returned when the work was first registered. The user enters the access code in the widget, which verifies it against the API and pre-fills the form with the existing work's metadata.
+
+## Setup
+
+Set `mode="update"` on the widget:
+
+```html
+<ats-widget
+  id="ats-widget"
+  site-key="cpk_your_public_key"
+  ats-url="https://ats.api.allfeat.org"
+  network="testnet"
+  mode="update"
+></ats-widget>
+```
+
+<Aside type="caution">
+The JWT token must be created with `action_type: "update_version"`. A token scoped to `register` or `access` will be rejected.
+</Aside>
+
+## Backend Token Setup
+
+```typescript title="backend/routes/ats-token.ts"
+app.post('/api/ats-token/update', async (req, res) => {
+  const user = await getAuthenticatedUser(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  // Verify the user owns this work before issuing a token
+  const work = await db.works.findByUser(user.id, req.body.atsId);
+  if (!work) return res.status(403).json({ error: 'Not allowed' });
+
+  const response = await fetch('https://ats.api.allfeat.org/v1/sessions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Origin': 'https://yoursite.com', // domain where the widget is embedded
+    },
+    body: JSON.stringify({
+      secret_key: process.env.ALLFEAT_SECRET_KEY,
+      action_type: 'update_version',
+      allowed_network: 'testnet',
+      allowed_ats_id: work.ats_id,     // restrict to this specific work
+    }),
+  });
+
+  const { token } = await response.json();
+  res.json({ token });
+});
+```
+
+<Aside type="tip">
+Always verify on your backend that the requesting user actually owns the work before issuing an `update_version` token. Use `allowed_ats_id` to further restrict the token's scope to a single work.
+</Aside>
+
+## User Flow
+
+When the widget opens in update mode, the user goes through the following steps:
+
+<Steps>
+
+1. ### Access Code
+
+   The user enters the access code for the work they want to update. The widget verifies the code against the API, which returns the current work metadata (title, creators). The form is pre-filled with this data.
+
+2. ### File (optional)
+
+   The user can choose to upload a new audio file or skip this step to reuse the existing one.
+
+3. ### Title
+
+   The work title, pre-filled from the current version. The title cannot be modified.
+
+4. ### Creators
+
+   The creators list, pre-filled from the current version. The user can add, remove, or modify creators and their roles.
+
+5. ### Review & Submit
+
+   Summary of all changes before submission. The widget then handles the upload (if applicable), blockchain transaction, and tracking.
+
+</Steps>
+
+### With a New Audio File
+
+The full flow — the new file is uploaded to S3, a new commitment hash is generated, and a new version is registered on-chain.
+
+### Without a New File (Metadata Only)
+
+The user skips the file step. Only the creators metadata is updated on-chain, reusing the existing audio's commitment.
+
+## Events
+
+Update mode emits the same events as register mode. The `allfeat:complete` event payload:
+
+```typescript
+{
+  atsId: number | null;   // The work's ATS ID
+  txHash: string;         // New transaction hash for this version
+  blockNumber: number;
+  explorerUrl: string;
+}
+```
+
+<Aside type="note">
+In update mode, the `accessCode` is **not** returned in the `complete` event since the user already provided it.
+</Aside>
+
+## Switching Modes Dynamically
+
+You can switch between modes by updating the `mode` attribute:
+
+```javascript
+const widget = document.getElementById('ats-widget');
+
+// Switch to update mode
+widget.setAttribute('mode', 'update');
+
+// Switch back to register mode
+widget.setAttribute('mode', 'register');
+```
+
+The widget automatically resets its form state when the `mode` attribute changes.

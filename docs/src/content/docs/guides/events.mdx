@@ -1,0 +1,190 @@
+---
+title: Events & Callbacks
+description: Track upload progress, blockchain confirmation, errors, and token expiry through the ATS Widget's Custom Events system.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The widget communicates with your application through standard **DOM Custom Events**. All events **bubble** and are **composed** (they cross the Shadow DOM boundary), so you can listen on the widget element or any ancestor.
+
+## Listening to Events
+
+```javascript
+const widget = document.querySelector('ats-widget');
+
+widget.addEventListener('allfeat:complete', (e) => {
+  console.log(e.detail); // Event payload
+});
+```
+
+## Lifecycle
+
+Events follow the registration flow:
+
+```
+ready → upload-start → upload-progress (×N) → upload-complete
+      → confirmed → step (×N) → complete
+```
+
+On error at any stage:
+```
+... → failed
+```
+
+Token expiry can occur at any point:
+```
+... → token-expired → (setToken) → retry
+```
+
+## Available Events
+
+### `allfeat:ready`
+
+Emitted when the widget is initialized and ready.
+
+```typescript
+{ mode: 'register' | 'update' | 'access' }
+```
+
+### `allfeat:upload-start`
+
+Emitted when the audio file upload begins.
+
+```typescript
+{ filename: string; size: number }
+```
+
+### `allfeat:upload-progress`
+
+Emitted repeatedly during upload. Useful for displaying an external progress bar.
+
+```typescript
+{ progress: number; loaded: number; total: number }
+// progress: 0–100 (percentage)
+```
+
+### `allfeat:upload-complete`
+
+Emitted when the upload finishes successfully.
+
+```typescript
+{ filename: string }
+```
+
+### `allfeat:confirmed`
+
+Emitted when the blockchain transaction has been submitted.
+
+```typescript
+{ transactionId: string }
+```
+
+### `allfeat:step`
+
+Emitted on each blockchain tracking step change.
+
+```typescript
+{
+  step: 'validating' | 'transferring_tokens'
+      | 'preparing_transaction' | 'signing'
+      | 'submitting' | 'confirming';
+  progress: number;       // 0–100
+  description?: string;
+}
+```
+
+<Aside type="note">
+The `transferring_tokens` step only occurs in **register** mode. In **update** mode, the flow goes directly from `validating` to `preparing_transaction`.
+</Aside>
+
+### `allfeat:complete`
+
+Emitted when the work is successfully registered on the blockchain.
+
+```typescript
+{
+  atsId: number | null;   // Unique work identifier
+  txHash: string;         // Blockchain transaction hash
+  blockNumber: number;    // Block number
+  explorerUrl: string;    // Blockchain explorer URL
+  accessCode?: string;    // Access code (register mode only)
+}
+```
+
+<Aside type="tip">
+In **register** mode, the `accessCode` is the end user's key to interact with their work later (update, access). The widget displays it on the success screen for the user to save. Your service may optionally store it as a backup.
+
+</Aside>
+
+### `allfeat:failed`
+
+Emitted when a critical error occurs.
+
+```typescript
+{
+  error: string;    // Error message
+  stage?: string;   // Stage where the error occurred
+  code?: string;    // Error code (see Reference > Error Codes)
+}
+```
+
+### `allfeat:token-expired`
+
+Emitted when the JWT token has expired (401 response).
+
+```typescript
+{ pendingAction: string }
+```
+
+After receiving this event, call `widget.setToken(newToken)` so the widget automatically retries the pending action. You have **60 seconds** before the widget transitions to a failed state.
+
+### `allfeat:error`
+
+Emitted for non-fatal errors (the widget can continue operating).
+
+```typescript
+{
+  stage: string;
+  error: string;
+  code?: string;
+  details?: unknown;
+}
+```
+
+## Example: Full Tracking
+
+```javascript
+const widget = document.querySelector('ats-widget');
+
+widget.addEventListener('allfeat:ready', (e) => {
+  console.log(`Widget ready in ${e.detail.mode} mode`);
+});
+
+widget.addEventListener('allfeat:upload-progress', (e) => {
+  updateProgressBar(e.detail.progress);
+});
+
+widget.addEventListener('allfeat:step', (e) => {
+  updateStatusMessage(e.detail.description);
+});
+
+widget.addEventListener('allfeat:complete', (e) => {
+  const { atsId, txHash, accessCode } = e.detail;
+  showSuccess(`ATS #${atsId} — TX: ${txHash}`);
+
+  if (accessCode) {
+    // Save access code for future operations
+    saveToDatabase({ atsId, accessCode });
+  }
+});
+
+widget.addEventListener('allfeat:failed', (e) => {
+  showError(e.detail.error);
+  reportToSentry(e.detail);
+});
+
+widget.addEventListener('allfeat:token-expired', async () => {
+  const { token } = await refreshToken();
+  widget.setToken(token);
+});
+```

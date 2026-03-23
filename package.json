@@ -3,16 +3,16 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Framework-agnostic web component for registering ATS works on Allfeat blockchain",
-  "main": "dist/allfeat-ats-register.cjs.js",
-  "module": "dist/allfeat-ats-register.esm.js",
-  "browser": "dist/allfeat-ats-register.iife.js",
-  "types": "dist/allfeat-ats-register.d.ts",
+  "main": "dist/ats-widget.cjs.js",
+  "module": "dist/ats-widget.esm.js",
+  "browser": "dist/ats-widget.iife.js",
+  "types": "dist/ats-widget.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/allfeat-ats-register.esm.js",
-      "require": "./dist/allfeat-ats-register.cjs.js",
-      "browser": "./dist/allfeat-ats-register.iife.js",
-      "types": "./dist/allfeat-ats-register.d.ts"
+      "import": "./dist/ats-widget.esm.js",
+      "require": "./dist/ats-widget.cjs.js",
+      "browser": "./dist/ats-widget.iife.js",
+      "types": "./dist/ats-widget.d.ts"
     }
   },
   "files": [
@@ -22,11 +22,13 @@
   "scripts": {
     "build": "rollup -c",
     "build:watch": "rollup -c -w",
+    "dev": "bun run build && bunx concurrently -n build,nuxt -c blue,green \"bun run build:watch\" \"cd demo && bun run dev\"",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run clean && npm run build",
-    "serve": "npx serve -l 3000",
-    "deploy:r2": "npm run build && bash scripts/deploy-r2.sh"
+    "prepublishOnly": "bun run clean && bun run build",
+    "serve": "bunx serve -l 3000",
+    "deploy:r2": "bun run build && bash scripts/deploy-r2.sh",
+    "dev:musicdash": "cd demo-musicdash && bun run dev"
   },
   "keywords": [
     "allfeat",

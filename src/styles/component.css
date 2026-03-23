@@ -35,6 +35,7 @@
 }
 
 .ats-container {
+  position: relative;
   max-width: 600px;
   margin: 0 auto;
   padding: 24px;
@@ -280,31 +281,6 @@
   margin-top: 16px;
 }
 
-/* Legacy file info section (kept for backward compatibility) */
-.ats-file-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  background: var(--ats-background);
-  border-radius: var(--ats-radius);
-  margin-top: 12px;
-}
-
-.ats-file-name {
-  flex: 1;
-  font-size: 13px;
-  color: var(--ats-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ats-file-size {
-  font-size: 12px;
-  color: var(--ats-text-muted);
-}
-
 /* Buttons */
 .ats-btn {
   display: inline-flex;
@@ -474,33 +450,6 @@
   gap: 8px;
 }
 
-.ats-checkbox-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: var(--ats-background);
-  border: 1px solid var(--ats-border);
-  border-radius: var(--ats-radius);
-  cursor: pointer;
-  transition: all var(--ats-transition);
-  font-size: 13px;
-}
-
-.ats-checkbox-item:hover {
-  border-color: var(--ats-primary);
-}
-
-.ats-checkbox-item.selected {
-  background: var(--ats-primary-light);
-  border-color: var(--ats-primary);
-  color: var(--ats-primary);
-}
-
-.ats-checkbox-item input {
-  display: none;
-}
-
 /* Creator form grid layout */
 .ats-creator-form-grid {
   display: grid;
@@ -668,19 +617,6 @@
   padding: 48px 32px;
 }
 
-.ats-success-icon {
-  width: 64px;
-  height: 64px;
-  background: var(--ats-primary);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 16px;
-  color: white;
-  font-size: 32px;
-}
-
 /* Large circular icon for success page (uses primary color) */
 .ats-success-icon-circle {
   width: 64px;
@@ -718,34 +654,9 @@
   margin-bottom: 32px;
 }
 
-.ats-success-download-description {
-  font-size: 14px;
-  color: var(--ats-text-secondary);
-  font-weight: 600;
-  line-height: 1.6;
-  max-width: 500px;
-  margin: 16px auto 24px;
-  text-align: center;
-}
-
-.ats-success-transaction-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--ats-primary);
-  font-size: 14px;
-  font-weight: 500;
-  text-decoration: none;
-  margin-top: 24px;
-}
-
-.ats-success-transaction-link:hover {
+/* Explorer link */
+.ats-explorer-link:hover {
   text-decoration: underline;
-}
-
-.ats-success-transaction-link svg {
-  width: 16px;
-  height: 16px;
 }
 
 /* Alert */
@@ -774,216 +685,82 @@
   border: 1px solid var(--ats-success);
 }
 
-/* Hidden */
-.ats-hidden {
-  display: none !important;
-}
-
-/* Validation Status (Review Step) */
-.ats-validation {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+/* Callouts (result screen) */
+.ats-callout {
+  text-align: left;
+  max-width: 420px;
+  margin: 0 auto 16px;
   padding: 16px;
   border-radius: var(--ats-radius);
-  margin-top: 16px;
-  margin-bottom: 16px;
-}
-
-.ats-validation-pending {
-  background: var(--ats-background-secondary);
   border: 1px solid var(--ats-border);
-  color: var(--ats-text-secondary);
-}
-
-.ats-validation-success {
-  background: var(--ats-success-light);
-  border: 1px solid var(--ats-success);
-  color: var(--ats-success);
-}
-
-.ats-validation-spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--ats-border);
-  border-top-color: var(--ats-primary);
-  border-radius: 50%;
-  animation: ats-spin 0.8s linear infinite;
-}
-
-.ats-validation-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
-}
-
-.ats-validation-icon svg {
-  width: 20px;
-  height: 20px;
-}
-
-.ats-validation-message {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-/* Protection Choice Cards */
-.ats-choice-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.ats-choice-card {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 20px;
-  background: var(--ats-background);
-  border: 2px solid var(--ats-border);
-  border-radius: var(--ats-radius-lg);
-  cursor: pointer;
-  transition: all var(--ats-transition);
-  text-align: left;
-}
-
-.ats-choice-card:hover {
-  border-color: var(--ats-primary);
-  background: var(--ats-primary-light);
-}
-
-.ats-choice-card:hover .ats-choice-icon {
-  background: var(--ats-primary-light);
-  color: var(--ats-primary);
-}
-
-.ats-choice-card.selected {
-  border-color: var(--ats-primary);
-  background: var(--ats-primary-light);
-}
-
-.ats-choice-card.selected .ats-choice-title {
-  color: var(--ats-primary);
-}
-
-.ats-choice-card.selected .ats-choice-icon {
-  background: var(--ats-primary);
-  color: white;
-}
-
-.ats-choice-card.selected .ats-choice-indicator {
-  color: var(--ats-primary);
-}
-
-/* Choice Card Icon */
-.ats-choice-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
-  border-radius: 50%;
   background: var(--ats-background-secondary);
-  color: var(--ats-text-muted);
-  transition: all var(--ats-transition);
 }
 
-.ats-choice-icon svg {
-  width: 24px;
-  height: 24px;
+.ats-callout-warning {
+  border-color: var(--ats-warning);
+  background: var(--ats-warning-light);
 }
 
-/* Choice Card Content */
-.ats-choice-content {
-  flex: 1;
-  min-width: 0;
+.ats-callout-primary {
+  border-color: var(--ats-primary);
+  background: var(--ats-primary-light);
 }
 
-.ats-choice-title {
-  font-size: 15px;
+.ats-callout-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--ats-text);
-  margin-bottom: 4px;
-  transition: color var(--ats-transition);
+  margin-bottom: 6px;
 }
 
-.ats-choice-description {
+.ats-callout-warning .ats-callout-title {
+  color: var(--ats-warning);
+}
+
+.ats-callout-text {
   font-size: 13px;
   color: var(--ats-text-secondary);
   line-height: 1.4;
 }
 
-/* Choice Card Indicator */
-.ats-choice-indicator {
+.ats-access-code-display {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 24px;
-  min-width: 24px;
-  color: var(--ats-border);
-  transition: color var(--ats-transition);
-}
-
-.ats-choice-indicator svg {
-  width: 24px;
-  height: 24px;
-}
-
-/* Fatal Auth Error */
-.ats-fatal-error {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 48px 24px;
-  min-height: 300px;
-}
-
-.ats-fatal-error-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  background: var(--ats-error-light);
-  color: var(--ats-error);
-  margin-bottom: 24px;
-}
-
-.ats-fatal-error-icon svg {
-  width: 32px;
-  height: 32px;
-}
-
-.ats-fatal-error-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--ats-error);
-  margin-bottom: 12px;
-}
-
-.ats-fatal-error-message {
-  font-size: 14px;
-  color: var(--ats-text-secondary);
-  line-height: 1.6;
-  max-width: 400px;
-  margin-bottom: 16px;
-}
-
-.ats-fatal-error-code {
-  font-size: 12px;
-  color: var(--ats-text-muted);
-  font-family: monospace;
-  background: var(--ats-background-secondary);
-  padding: 6px 12px;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: var(--ats-background);
+  border: 1px solid var(--ats-border);
   border-radius: var(--ats-radius);
+}
+
+.ats-access-code-display code {
+  flex: 1;
+  font-family: monospace;
+  font-size: 12px;
+  word-break: break-all;
+  color: var(--ats-text);
+}
+
+.ats-access-code-display .ats-btn {
+  flex-shrink: 0;
+}
+
+/* Compact summary (transaction details) */
+.ats-summary-compact {
+  text-align: left;
+  max-width: 420px;
+  margin: 16px auto;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+/* Hidden */
+.ats-hidden {
+  display: none !important;
 }
 
 /* Responsive */
@@ -1008,37 +785,189 @@
     flex-direction: column-reverse;
   }
 
-  /* Choice cards stack vertically on mobile */
-  .ats-choice-grid {
-    grid-template-columns: 1fr;
-  }
+}
 
-  .ats-choice-card {
-    padding: 16px;
-    gap: 12px;
-  }
+/* ============================================
+   Upload Screen
+   ============================================ */
 
-  .ats-choice-icon {
-    width: 40px;
-    height: 40px;
-    min-width: 40px;
-  }
+.ats-upload-screen {
+  text-align: center;
+  padding: 48px 24px;
+}
 
-  .ats-choice-icon svg {
-    width: 20px;
-    height: 20px;
-  }
+.ats-upload-filename {
+  font-size: 14px;
+  color: var(--ats-text-secondary);
+  word-break: break-word;
+  margin-bottom: 8px;
+}
 
-  .ats-choice-title {
-    font-size: 14px;
-  }
+/* ============================================
+   Tracking Steps
+   ============================================ */
 
-  .ats-choice-description {
-    font-size: 12px;
-  }
+.ats-tracking-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-width: 320px;
+  margin: 0 auto;
+  text-align: left;
+}
 
-  .ats-choice-indicator svg {
-    width: 20px;
-    height: 20px;
-  }
+.ats-tracking-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  color: var(--ats-text-muted);
+  position: relative;
+}
+
+/* Vertical connector line */
+.ats-tracking-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 9px;
+  top: 34px;
+  width: 2px;
+  height: calc(100% - 14px);
+  background: var(--ats-border);
+}
+
+.ats-tracking-step.completed:not(:last-child)::after {
+  background: var(--ats-primary);
+}
+
+.ats-tracking-step-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.ats-tracking-step-circle {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--ats-border);
+  background: var(--ats-background);
+}
+
+.ats-tracking-step-label {
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.ats-tracking-step.completed {
+  color: var(--ats-primary);
+}
+
+.ats-tracking-step.completed .ats-tracking-step-icon {
+  color: var(--ats-primary);
+}
+
+.ats-tracking-step.active {
+  color: var(--ats-text);
+  font-weight: 500;
+}
+
+.ats-tracking-step.pending {
+  color: var(--ats-text-muted);
+  opacity: 0.6;
+}
+
+/* ============================================
+   Failed Screen
+   ============================================ */
+
+.ats-failed-screen {
+  text-align: center;
+  padding: 48px 24px;
+}
+
+.ats-failed-icon-circle {
+  width: 64px;
+  height: 64px;
+  background: var(--ats-error-light);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  color: var(--ats-error);
+}
+
+.ats-failed-icon-circle svg {
+  width: 32px;
+  height: 32px;
+}
+
+/* ============================================
+   Utility Classes
+   ============================================ */
+
+.ats-mt-sm {
+  margin-top: 8px;
+}
+
+.ats-mt-md {
+  margin-top: 16px;
+}
+
+.ats-mt-lg {
+  margin-top: 24px;
+}
+
+.ats-mb-lg {
+  margin-bottom: 24px;
+}
+
+.ats-w-full {
+  width: 100%;
+}
+
+.ats-monospace-sm {
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.ats-text-error {
+  color: var(--ats-error);
+}
+
+/* Creator summary in review step */
+.ats-creator-summary {
+  padding-left: 8px;
+  border-left: 2px solid var(--ats-primary);
+}
+
+/* Explorer link container */
+.ats-explorer-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.ats-explorer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ats-primary);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+/* Access mode summary */
+.ats-summary-access {
+  text-align: left;
+  max-width: 400px;
+  margin: 0 auto 24px;
 }

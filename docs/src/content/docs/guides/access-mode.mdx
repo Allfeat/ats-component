@@ -1,0 +1,114 @@
+---
+title: Access Mode
+description: Use the ATS Widget's access mode to consult on-chain details of a registered work — ATS ID, title, owner, version, and commitment hash.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Access mode lets your end users **view the details** of a work registered on the Allfeat blockchain. No modification is made — it's read-only.
+
+## Use Cases
+
+- **Post-registration confirmation** — let users verify their work's on-chain status
+- **Work lookup** — display work details on a dedicated page of your platform
+- **Support & verification** — allow customer support to quickly check a work's status
+
+## Setup
+
+Set `mode="access"` on the widget:
+
+```html
+<ats-widget
+  id="ats-widget"
+  site-key="cpk_your_public_key"
+  ats-url="https://ats.api.allfeat.org"
+  network="testnet"
+  mode="access"
+></ats-widget>
+```
+
+## Backend Token Setup
+
+The JWT token must be created with `action_type: "access"`:
+
+```typescript title="backend/routes/ats-token.ts"
+app.post('/api/ats-token/access', async (req, res) => {
+  const response = await fetch('https://ats.api.allfeat.org/v1/sessions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Origin': 'https://yoursite.com', // domain where the widget is embedded
+    },
+    body: JSON.stringify({
+      secret_key: process.env.ALLFEAT_SECRET_KEY,
+      action_type: 'access',
+      allowed_network: 'testnet',
+    }),
+  });
+
+  const { token } = await response.json();
+  res.json({ token });
+});
+```
+
+## User Flow
+
+1. The user enters the work's **access code** (`atc_...`)
+2. The widget validates the code and fetches work details from the API
+3. A summary screen is displayed with:
+
+| Field | Description |
+|-------|-------------|
+| **ATS ID** | Unique on-chain identifier |
+| **Title** | Work title |
+| **Network** | Blockchain network (testnet/mainnet) |
+| **Owner** | Blockchain address of the work's owner |
+| **Version** | Latest version number |
+| **Commitment** | Cryptographic commitment hash |
+| **Created at** | Registration timestamp |
+
+## Events
+
+Access mode emits a simplified event lifecycle:
+
+```
+ready → complete
+```
+
+The `allfeat:complete` event in access mode has empty blockchain fields since no transaction is performed:
+
+```typescript
+{
+  atsId: number | null;
+  txHash: '';            // No transaction in access mode
+  blockNumber: 0;
+  explorerUrl: '';
+  accessCode: string;    // The access code that was entered
+}
+```
+
+<Aside type="note">
+There are no upload or tracking events in access mode since no file or blockchain transaction is involved.
+</Aside>
+
+## Example: Pre-filled Access Code
+
+If your platform already knows the access code (e.g., stored in your database), you can guide the user directly:
+
+```javascript
+const widget = document.getElementById('ats-widget');
+
+// Set up the widget in access mode
+widget.setAttribute('mode', 'access');
+
+// Listen for completion
+widget.addEventListener('allfeat:complete', (e) => {
+  console.log('Work details retrieved:', e.detail);
+});
+
+// Initialize with token
+const { token } = await fetch('/api/ats-token/access', {
+  method: 'POST',
+}).then(r => r.json());
+widget.setToken(token);
+```

@@ -1,159 +1,153 @@
-/**
- * Custom event types for the ATS register component
- */
+import type { Mode } from '../api/types';
 
-/**
- * ZKP computation progress event detail
- */
-export interface ZkpComputingDetail {
+// ============================================
+// Event Names
+// ============================================
+
+/** Constant map of custom event names dispatched by the component. Listen for these on the `<ats-widget>` element. */
+export const EVENT_NAMES = {
+  READY: 'allfeat:ready',
+  UPLOAD_START: 'allfeat:upload-start',
+  UPLOAD_PROGRESS: 'allfeat:upload-progress',
+  UPLOAD_COMPLETE: 'allfeat:upload-complete',
+  CONFIRMED: 'allfeat:confirmed',
+  STEP: 'allfeat:step',
+  COMPLETE: 'allfeat:complete',
+  FAILED: 'allfeat:failed',
+  TOKEN_EXPIRED: 'allfeat:token-expired',
+  ERROR: 'allfeat:error',
+} as const;
+
+// ============================================
+// Event Detail Interfaces
+// ============================================
+
+/** Detail for the `allfeat:ready` event, emitted when the component initializes. */
+export interface ReadyDetail {
+  mode: Mode;
+}
+
+/** Detail for the `allfeat:upload-start` event. */
+export interface UploadStartDetail {
+  filename: string;
+  /** File size in bytes. */
+  size: number;
+}
+
+/** Detail for the `allfeat:upload-progress` event, emitted periodically during upload. */
+export interface UploadProgressDetail {
+  /** Upload progress percentage (0–100). */
   progress: number;
-  stage: 'bundle' | 'proof' | 'verify';
-  message?: string;
+  /** Bytes uploaded so far. */
+  loaded: number;
+  /** Total file size in bytes. */
+  total: number;
 }
 
-/**
- * Blockchain submission in progress event detail
- */
-export interface BlockchainSubmittingDetail {
-  commitment: string;
+/** Detail for the `allfeat:upload-complete` event. */
+export interface UploadCompleteDetail {
+  filename: string;
 }
 
-/**
- * Blockchain submission success event detail
- */
-export interface BlockchainSuccessDetail {
-  atsId: number;
+/** Detail for the `allfeat:confirmed` event, emitted when the transaction is submitted. */
+export interface ConfirmedDetail {
+  transactionId: string;
+}
+
+/** Detail for the `allfeat:step` event, emitted as the transaction progresses through steps. */
+export interface StepDetail {
+  /** Current step identifier (e.g. `"signing"`, `"submitting"`). */
+  step: string;
+  /** Overall progress percentage (0–100). */
+  progress: number;
+  description?: string;
+}
+
+/** Detail for the `allfeat:complete` event, emitted on successful registration/update. */
+export interface CompleteDetail {
+  /** Numeric ATS identifier, `null` if not yet assigned. */
+  atsId: number | null;
   txHash: string;
   blockNumber: number;
-  explorerUrl?: string;
-  message?: string;
+  explorerUrl: string;
+  /** Access code for the work (present on new registrations). */
+  accessCode?: string;
 }
 
-/**
- * ZIP ready for download event detail
- */
-export interface ZipReadyDetail {
-  blob: Blob;
-  filename: string;
-  pdfGenerated: boolean;
+/** Detail for the `allfeat:failed` event. */
+export interface FailedDetail {
+  error: string;
+  code?: string;
+  /** The mode or stage where the failure occurred. */
+  stage?: Mode | string;
 }
 
-/**
- * Error event detail
- */
-export interface AtsRegisterErrorDetail {
-  stage: 'wasm-init' | 'validation' | 'zkp' | 'api' | 'certificate' | 'auth' | 'unknown';
+/** Detail for the `allfeat:token-expired` event. The consumer should provide a fresh token. */
+export interface TokenExpiredDetail {
+  /** Description of the action that was interrupted. */
+  pendingAction: string;
+}
+
+/** Detail for the `allfeat:error` event, emitted on recoverable or informational errors. */
+export interface ErrorDetail {
+  /** Pipeline stage where the error occurred (e.g. `"upload"`, `"prepare"`). */
+  stage: string;
   error: string;
   code?: string;
   details?: unknown;
 }
 
-/**
- * Form step change event detail
- */
-export interface StepChangeDetail {
-  step: number;
-  stepName: string;
-  totalSteps: number;
-}
+// ============================================
+// Helpers
+// ============================================
 
-/**
- * Event names used by the component
- */
-export const EVENT_NAMES = {
-  ZKP_COMPUTING: 'zkp-computing',
-  BLOCKCHAIN_SUBMITTING: 'blockchain-submitting',
-  BLOCKCHAIN_SUCCESS: 'blockchain-success',
-  ZIP_READY: 'zip-ready',
-  ERROR: 'ats-register-error',
-  STEP_CHANGE: 'step-change',
-  FORM_VALID: 'form-valid',
-  FORM_INVALID: 'form-invalid',
-} as const;
-
-/**
- * Create a typed custom event
- */
-export function createCustomEvent<T>(
+function createCustomEvent<T>(
   eventName: string,
   detail: T,
-  options: { bubbles?: boolean; composed?: boolean } = {}
 ): CustomEvent<T> {
   return new CustomEvent(eventName, {
     detail,
-    bubbles: options.bubbles ?? true,
-    composed: options.composed ?? true, // Cross shadow DOM boundary
+    bubbles: true,
+    composed: true,
   });
 }
 
-/**
- * Dispatch ZKP computing progress event
- */
-export function dispatchZkpComputing(
-  element: HTMLElement,
-  detail: ZkpComputingDetail
-): void {
-  element.dispatchEvent(
-    createCustomEvent(EVENT_NAMES.ZKP_COMPUTING, detail)
-  );
+export function dispatchReady(el: HTMLElement, detail: ReadyDetail): void {
+  el.dispatchEvent(createCustomEvent(EVENT_NAMES.READY, detail));
 }
 
-/**
- * Dispatch blockchain submitting event
- */
-export function dispatchBlockchainSubmitting(
-  element: HTMLElement,
-  detail: BlockchainSubmittingDetail
-): void {
-  element.dispatchEvent(
-    createCustomEvent(EVENT_NAMES.BLOCKCHAIN_SUBMITTING, detail)
-  );
+export function dispatchUploadStart(el: HTMLElement, detail: UploadStartDetail): void {
+  el.dispatchEvent(createCustomEvent(EVENT_NAMES.UPLOAD_START, detail));
 }
 
-/**
- * Dispatch blockchain success event
- */
-export function dispatchBlockchainSuccess(
-  element: HTMLElement,
-  detail: BlockchainSuccessDetail
-): void {
-  element.dispatchEvent(
-    createCustomEvent(EVENT_NAMES.BLOCKCHAIN_SUCCESS, detail)
-  );
+export function dispatchUploadProgress(el: HTMLElement, detail: UploadProgressDetail): void {
+  el.dispatchEvent(createCustomEvent(EVENT_NAMES.UPLOAD_PROGRESS, detail));
 }
 
-/**
- * Dispatch ZIP ready event
- */
-export function dispatchZipReady(
-  element: HTMLElement,
-  detail: ZipReadyDetail
-): void {
-  element.dispatchEvent(
-    createCustomEvent(EVENT_NAMES.ZIP_READY, detail)
-  );
+export function dispatchUploadComplete(el: HTMLElement, detail: UploadCompleteDetail): void {
+  el.dispatchEvent(createCustomEvent(EVENT_NAMES.UPLOAD_COMPLETE, detail));
 }
 
-/**
- * Dispatch error event
- */
-export function dispatchError(
-  element: HTMLElement,
-  detail: AtsRegisterErrorDetail
-): void {
-  element.dispatchEvent(
-    createCustomEvent(EVENT_NAMES.ERROR, detail)
-  );
+export function dispatchConfirmed(el: HTMLElement, detail: ConfirmedDetail): void {
+  el.dispatchEvent(createCustomEvent(EVENT_NAMES.CONFIRMED, detail));
 }
 
-/**
- * Dispatch step change event
- */
-export function dispatchStepChange(
-  element: HTMLElement,
-  detail: StepChangeDetail
-): void {
-  element.dispatchEvent(
-    createCustomEvent(EVENT_NAMES.STEP_CHANGE, detail)
-  );
+export function dispatchStep(el: HTMLElement, detail: StepDetail): void {
+  el.dispatchEvent(createCustomEvent(EVENT_NAMES.STEP, detail));
+}
+
+export function dispatchComplete(el: HTMLElement, detail: CompleteDetail): void {
+  el.dispatchEvent(createCustomEvent(EVENT_NAMES.COMPLETE, detail));
+}
+
+export function dispatchFailed(el: HTMLElement, detail: FailedDetail): void {
+  el.dispatchEvent(createCustomEvent(EVENT_NAMES.FAILED, detail));
+}
+
+export function dispatchTokenExpired(el: HTMLElement, detail: TokenExpiredDetail): void {
+  el.dispatchEvent(createCustomEvent(EVENT_NAMES.TOKEN_EXPIRED, detail));
+}
+
+export function dispatchError(el: HTMLElement, detail: ErrorDetail): void {
+  el.dispatchEvent(createCustomEvent(EVENT_NAMES.ERROR, detail));
 }
