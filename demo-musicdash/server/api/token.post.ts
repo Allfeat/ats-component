@@ -7,6 +7,7 @@ export default defineEventHandler(async (event) => {
   const actionType = body?.action_type;
   const allowedNetwork = body?.allowed_network;
   const allowedAtsId = body?.allowed_ats_id;
+  const maxFileSizeBytes = body?.max_file_size_bytes;
 
   if (!actionType) {
     throw createError({ statusCode: 400, message: 'action_type is required' });
@@ -20,6 +21,10 @@ export default defineEventHandler(async (event) => {
 
   if (allowedAtsId != null) {
     payload.allowed_ats_id = Number(allowedAtsId);
+  }
+
+  if (maxFileSizeBytes != null) {
+    payload.max_file_size_bytes = Number(maxFileSizeBytes);
   }
 
   const url = `${organizationsUrl.replace(/\/+$/, '')}/v1/sessions`;

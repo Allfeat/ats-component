@@ -81,7 +81,7 @@ import styles from './styles/component.css';
 // ============================================
 
 export class AllfeatRegister extends HTMLElement {
-  static observedAttributes = ['site-key', 'token', 'ats-url', 'network', 'mode'];
+  static observedAttributes = ['site-key', 'token', 'ats-url', 'network', 'mode', 'max-file-size'];
 
   private shadow: ShadowRoot;
   private state: ComponentState;
@@ -121,8 +121,16 @@ export class AllfeatRegister extends HTMLElement {
     return (this.getAttribute('mode') as Mode) || 'register';
   }
 
+  get maxFileSizeAttr(): number | null {
+    const val = this.getAttribute('max-file-size');
+    if (val == null) return null;
+    const n = Number(val);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
   get maxFileSize(): number {
-    return this._maxFileSize;
+    const orgLimit = this.maxFileSizeAttr;
+    return orgLimit != null ? Math.min(this._maxFileSize, orgLimit) : this._maxFileSize;
   }
 
   // ============================================
@@ -204,6 +212,9 @@ export class AllfeatRegister extends HTMLElement {
         this.render();
         break;
       case 'network':
+        this.render();
+        break;
+      case 'max-file-size':
         this.render();
         break;
     }

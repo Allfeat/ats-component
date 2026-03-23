@@ -14,4 +14,4 @@ services:
       # Public (exposed to client) — ats-url is used by the browser, so it stays localhost
       NUXT_PUBLIC_ATS_URL: http://localhost:13002
       NUXT_PUBLIC_SITE_KEY: cpk_0000000000000000000000000000000000000000000000000000000000000000
-      NUXT_PUBLIC_NETWORK: testnet
+      NUXT_PUBLIC_NETWORK: mainnet

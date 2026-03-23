@@ -12,7 +12,7 @@ async function requestToken(mode: 'register' | 'update' | 'access') {
   else if (mode === 'access') actionType = 'access';
   else actionType = 'register';
 
-  const res = await $fetch<{ token: string; expires_in: number; network?: string }>('/api/token', {
+  const res = await $fetch<{ token: string; expires_in: number; network?: string; max_file_size_bytes?: number }>('/api/token', {
     method: 'POST',
     body: {
       action_type: actionType,
@@ -30,13 +30,18 @@ async function configureWidget(mode: 'register' | 'update' | 'access') {
   loading.value = true;
 
   try {
-    const { token, network } = await requestToken(mode);
+    const { token, network, max_file_size_bytes } = await requestToken(mode);
 
     widget.setAttribute('ats-url', atsUrl);
     widget.setAttribute('site-key', siteKey);
     widget.setAttribute('mode', mode);
     if (network) {
       widget.setAttribute('network', network);
+    }
+    if (max_file_size_bytes != null) {
+      widget.setAttribute('max-file-size', String(max_file_size_bytes));
+    } else {
+      widget.removeAttribute('max-file-size');
     }
 
     widget.setToken(token);
@@ -65,7 +70,10 @@ onMounted(() => {
   widget.addEventListener('allfeat:token-expired', async () => {
     console.log('[MusicDash] Token expired, refreshing...');
     try {
-      const { token } = await requestToken(activeMode.value);
+      const { token, max_file_size_bytes } = await requestToken(activeMode.value);
+      if (max_file_size_bytes != null) {
+        (widget as any).setAttribute('max-file-size', String(max_file_size_bytes));
+      }
       (widget as any).setToken(token);
       console.log('[MusicDash] Token refreshed');
     } catch (err: any) {
