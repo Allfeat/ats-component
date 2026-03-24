@@ -27,8 +27,7 @@
     "clean": "rm -rf dist",
     "prepublishOnly": "bun run clean && bun run build",
     "serve": "bunx serve -l 3000",
-    "deploy:r2": "bun run build && bash scripts/deploy-r2.sh",
-    "dev:musicdash": "cd demo-musicdash && bun run dev"
+    "deploy:r2": "bun run build && bash scripts/deploy-r2.sh"
   },
   "keywords": [
     "allfeat",

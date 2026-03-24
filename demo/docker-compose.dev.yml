@@ -2,7 +2,7 @@ services:
   demo-musicdash:
     build:
       context: ..
-      dockerfile: demo-musicdash/Dockerfile
+      dockerfile: demo/Dockerfile
     ports:
       - "3001:3000"
     extra_hosts:

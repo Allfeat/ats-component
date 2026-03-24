@@ -12,7 +12,7 @@ async function requestToken(mode: 'register' | 'update' | 'access') {
   else if (mode === 'access') actionType = 'access';
   else actionType = 'register';
 
-  const res = await $fetch<{ token: string; expires_in: number; network?: string; max_file_size_bytes?: number }>('/api/token', {
+  const res = await $fetch<{ token: string; expires_in: number; network?: string; max_file_size_bytes?: number }>('/api/musicdash/token', {
     method: 'POST',
     body: {
       action_type: actionType,

@@ -12,7 +12,6 @@ A vanilla TypeScript Web Component (`<ats-widget>`) for registering, updating, a
 bun run build          # One-shot production build (rollup)
 bun run build:watch    # Watch mode build
 bun run dev            # Build + watch + start demo Nuxt app concurrently
-bun run dev:musicdash  # Start demo-musicdash Nuxt app
 bun run typecheck      # tsc --noEmit (no linter configured)
 bun run clean          # Remove dist/
 ```
@@ -61,10 +60,13 @@ The component talks to an ATS API backend (`ats-url` attribute). Demo apps use N
 
 `handleTokenExpired()` pauses the current flow, stores a retry callback, emits `allfeat:token-expired`, then resumes when a new `token` attribute is set.
 
-## Demos
+## Demo
 
-- `demo/` — Simple local dev demo (Nuxt 3, port 3000)
-- `demo-musicdash/` — Production-pattern demo with Docker + BFF (Nuxt 3, port 3001)
+Single Nuxt 3 app in `demo/` (port 3000) with two pages:
+- `/` — Dev console with config UI, event log, and code examples
+- `/musicdash/` — Production-pattern MusicDash integration with BFF token flow
+
+Docker support (`demo/Dockerfile`, `demo/docker-compose.dev.yml`) for containerized deployment.
 
 ## CI/CD
 

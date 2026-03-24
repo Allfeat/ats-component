@@ -4,7 +4,7 @@ on:
   push:
     branches: [master, develop]
     paths:
-      - 'demo-musicdash/**'
+      - 'demo/**'
       - 'src/**'
       - 'rollup.config.js'
       - 'package.json'
@@ -45,7 +45,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: demo-musicdash/Dockerfile
+          file: demo/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
