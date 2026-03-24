@@ -28,7 +28,6 @@ export {
   downloadCertificate,
   subscribeToTransaction,
   pollTransactionStatus,
-  fetchAccessWork,
 } from './api/client';
 
 // API types
@@ -50,7 +49,6 @@ export type {
   TransactionStatusResponse,
   TrackingStep,
   DownloadCertificateResponse,
-  AccessWorkResponse,
 } from './api/types';
 
 export {

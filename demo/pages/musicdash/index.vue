@@ -2,15 +2,12 @@
 // Public config from runtimeConfig — secrets stay server-side in the BFF
 const { atsUrl, siteKey, network } = useRuntimeConfig().public;
 
-const activeMode = ref<'register' | 'update' | 'access'>('register');
+const activeMode = ref<'register' | 'update'>('register');
 const loading = ref(true);
 const widgetRef = ref<HTMLElement | null>(null);
 
-async function requestToken(mode: 'register' | 'update' | 'access') {
-  let actionType: string;
-  if (mode === 'update') actionType = 'update_version';
-  else if (mode === 'access') actionType = 'access';
-  else actionType = 'register';
+async function requestToken(mode: 'register' | 'update') {
+  const actionType = mode === 'update' ? 'update_version' : 'register';
 
   const res = await $fetch<{ token: string; expires_in: number; network?: string; max_file_size_bytes?: number }>('/api/musicdash/token', {
     method: 'POST',
@@ -23,7 +20,7 @@ async function requestToken(mode: 'register' | 'update' | 'access') {
   return res;
 }
 
-async function configureWidget(mode: 'register' | 'update' | 'access') {
+async function configureWidget(mode: 'register' | 'update') {
   const widget = widgetRef.value as any;
   if (!widget) return;
 
@@ -54,7 +51,7 @@ async function configureWidget(mode: 'register' | 'update' | 'access') {
   }
 }
 
-function switchMode(mode: 'register' | 'update' | 'access') {
+function switchMode(mode: 'register' | 'update') {
   if (mode === activeMode.value && !loading.value) return;
   activeMode.value = mode;
   const widget = widgetRef.value as any;
@@ -148,12 +145,6 @@ useHead({
               @click="switchMode('update')"
             >
               Update
-            </button>
-            <button
-              :class="['mode-btn', { active: activeMode === 'access' }]"
-              @click="switchMode('access')"
-            >
-              Access
             </button>
           </div>
         </div>

@@ -5,8 +5,8 @@
 /** UI screen the component is currently displaying. */
 export type Screen = 'FORM' | 'UPLOAD' | 'CONFIRMING' | 'TRACKING' | 'COMPLETE' | 'FAILED';
 
-/** Operating mode of the component: register a new work, update an existing one, or view access info. */
-export type Mode = 'register' | 'update' | 'access';
+/** Operating mode of the component: register a new work or update an existing one. */
+export type Mode = 'register' | 'update';
 
 /** Target blockchain network. */
 export type Network = 'testnet' | 'mainnet';

@@ -14,7 +14,7 @@ Set these directly on the `<ats-widget>` element.
 | `site-key` | `string` | Yes | — | Your organization's public key (`cpk_...`) |
 | `ats-url` | `string` | Yes | — | Base URL of the ATS API (`https://ats.api.allfeat.org`) |
 | `network` | `"testnet" \| "mainnet"` | No | `"testnet"` | Blockchain network to use |
-| `mode` | `"register" \| "update" \| "access"` | No | `"register"` | Operation mode |
+| `mode` | `"register" \| "update"` | No | `"register"` | Operation mode |
 | `token` | `string` | No | — | JWT token (prefer `setToken()` instead — see [Authentication](/guides/authentication/)) |
 
 ### Example
@@ -29,7 +29,7 @@ Set these directly on the `<ats-widget>` element.
 ```
 
 <Aside type="note">
-In **update** and **access** modes, the work is identified by the **access code** entered by the user in the widget's form — not by an HTML attribute.
+In **update** mode, the work is identified by the **access code** entered by the user in the widget's form — not by an HTML attribute.
 </Aside>
 
 ## JavaScript Properties
@@ -42,7 +42,7 @@ Read-only accessors that reflect the current attribute values.
 | `atsUrl` | `string` | Current `ats-url` value |
 | `token` | `string` | Current token value |
 | `network` | `'testnet' \| 'mainnet'` | Current network |
-| `mode` | `'register' \| 'update' \| 'access'` | Current operation mode |
+| `mode` | `'register' \| 'update'` | Current operation mode |
 | `maxFileSize` | `number` | Maximum file size in bytes (fetched from API at startup) |
 
 ## Methods
@@ -148,11 +148,6 @@ The form wizard progresses through these sub-steps depending on the mode:
 | `creators` | Creator details (pre-filled from existing work) |
 | `review` | Summary before submission |
 
-**Access mode:**
-| Sub-step | Description |
-|----------|-------------|
-| `access_code` | Access code entry — triggers work lookup |
-
 ## TypeScript
 
 When using the ESM or CJS bundle, you get full type definitions:
@@ -177,7 +172,6 @@ import type {
   FormSubStep,           // 'file' | 'title' | 'creators' | 'review' | 'access_code'
   ComponentState,        // Full component state machine
   CompletionData,        // Post-registration data
-  AccessData,            // Access mode response data
   // Event detail types
   ReadyDetail,
   UploadStartDetail,
@@ -194,7 +188,6 @@ import type {
   InitWorkResponse,
   PrepareWorkResponse,
   ConfirmWorkResponse,
-  AccessWorkResponse,
   TrackingStep,
 } from 'allfeat-ats-component';
 

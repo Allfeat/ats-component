@@ -7,7 +7,7 @@ const config = reactive({
   atsUrl: 'http://localhost:13002',
   network: 'testnet',
   allowedAtsId: '',
-  mode: 'register' as 'register' | 'update' | 'access',
+  mode: 'register' as 'register' | 'update',
   primaryColor: '#4DB8A8',
   radius: '8px',
   font: '',
@@ -74,14 +74,7 @@ function syntaxHighlightJSON(obj: unknown): string {
 
 // --------------- Token management ---------------
 async function requestToken() {
-  let actionType: string;
-  if (config.mode === 'update') {
-    actionType = 'update_version';
-  } else if (config.mode === 'access') {
-    actionType = 'access';
-  } else {
-    actionType = 'register';
-  }
+  const actionType = config.mode === 'update' ? 'update_version' : 'register';
 
   if (!config.organizationsUrl || !config.secretKey) {
     throw new Error('Organizations URL and Secret Key are required');
@@ -313,7 +306,6 @@ const activeTab = ref<'client' | 'backend' | 'custom'>('client');
           <select v-model="config.mode">
             <option value="register">register</option>
             <option value="update">update</option>
-            <option value="access">access</option>
           </select>
         </div>
         <div v-show="config.mode === 'register'" class="config-field">
@@ -471,7 +463,7 @@ const activeTab = ref<'client' | 'backend' | 'custom'>('client');
 <span class="comment">// ============================================</span>
 
 <span class="comment">// 1. On page load: fetch a JWT from YOUR backend</span>
-<span class="comment">// Your backend must include action_type ("register" | "update_version" | "access")</span>
+<span class="comment">// Your backend must include action_type ("register" | "update_version")</span>
 <span class="comment">// when calling POST /v1/sessions</span>
 <span class="keyword">async function</span> <span class="func">initWidget</span>() {
   <span class="keyword">const</span> res = <span class="keyword">await</span> <span class="func">fetch</span>(<span class="string">'/api/auth/ats-token'</span>, {
@@ -558,7 +550,7 @@ app.<span class="func">post</span>(<span class="string">'/api/auth/ats-token'</s
     },
     body: JSON.<span class="func">stringify</span>({
       secret_key: ATS_SECRET_KEY,
-      action_type: <span class="string">'register'</span>,  <span class="comment">// or 'update_version', 'access'</span>
+      action_type: <span class="string">'register'</span>,  <span class="comment">// or 'update_version'</span>
       allowed_network: <span class="string">'testnet'</span>, <span class="comment">// required for 'register'</span>
     }),
   });

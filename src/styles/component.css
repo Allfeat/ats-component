@@ -965,9 +965,3 @@
   text-decoration: none;
 }
 
-/* Access mode summary */
-.ats-summary-access {
-  text-align: left;
-  max-width: 400px;
-  margin: 0 auto 24px;
-}

@@ -1,4 +1,4 @@
-import type { CreatorFormData, FormState, FormSubStep, AccessData } from './types';
+import type { CreatorFormData, FormState, FormSubStep } from './types';
 import { CREATOR_ROLES } from './types';
 import { getTrackingSteps } from '../api/types';
 import type { Mode } from '../api/types';
@@ -50,10 +50,7 @@ const UPDATE_FORM_STEPS: StepDef[] = [
   { id: 'review', label: 'Summary' },
 ];
 
-const ACCESS_STEPS: StepDef[] = [ACCESS_CODE_STEP];
-
 export function getFormSteps(mode: Mode): StepDef[] {
-  if (mode === 'access') return ACCESS_STEPS;
   if (mode === 'update') return UPDATE_FORM_STEPS;
   return FORM_STEPS;
 }
@@ -362,21 +359,10 @@ export function renderUploadScreen(
 // ============================================
 
 export function renderConfirmingScreen(mode: Mode): string {
-  const isAccess = mode === 'access';
   const isUpdate = mode === 'update';
 
-  let title: string;
-  let subtitle: string;
-  if (isAccess) {
-    title = 'Looking up work...';
-    subtitle = 'Retrieving work details from the access code';
-  } else if (isUpdate) {
-    title = 'Confirming version update';
-    subtitle = 'Preparing blockchain submission...';
-  } else {
-    title = 'Confirming registration';
-    subtitle = 'Preparing blockchain submission...';
-  }
+  const title = isUpdate ? 'Confirming version update' : 'Confirming registration';
+  const subtitle = 'Preparing blockchain submission...';
 
   return `
     <div class="ats-upload-screen">
@@ -542,13 +528,11 @@ export function renderFailedScreen(error: string): string {
 export function renderAccessCodeStep(
   accessCode: string,
   errors: { accessCode?: string } = {},
-  mode: 'access' | 'update' = 'access',
   loading = false,
 ): string {
-  const isUpdate = mode === 'update';
   return `
-    <div class="ats-section-title ats-section-title-centered">${isUpdate ? 'Enter Access Code' : 'Access a Work'}</div>
-    <div class="ats-section-title">${isUpdate ? 'Enter your access code to update the work' : 'Enter your access code to view work details'}</div>
+    <div class="ats-section-title ats-section-title-centered">Enter Access Code</div>
+    <div class="ats-section-title">Enter your access code to update the work</div>
     <div class="ats-form-group">
       <label class="ats-label ats-label-required" for="access-code">Access Code</label>
       <input
@@ -565,77 +549,9 @@ export function renderAccessCodeStep(
       ${errors.accessCode ? `<div class="ats-error-message">${errors.accessCode}</div>` : ''}
     </div>
     <div class="ats-btn-group ats-btn-group-right">
-      ${isUpdate ? `
-        <button type="button" class="ats-btn ats-btn-primary" id="next-btn" data-action="next" ${loading ? 'disabled' : ''}>
-          ${loading ? 'Verifying...' : `Verify & continue ${ICONS.arrowRight}`}
-        </button>
-      ` : `
-        <button type="button" class="ats-btn ats-btn-primary" id="submit-btn" data-action="submit">
-          ${ICONS.search}
-          Look up work
-        </button>
-      `}
-    </div>
-  `;
-}
-
-// ============================================
-// Access Complete Screen
-// ============================================
-
-export function renderAccessCompleteScreen(
-  accessData: AccessData,
-): string {
-  return `
-    <div class="ats-success-container">
-      <div class="ats-success-icon-circle">
-        ${ICONS.checkLg}
-      </div>
-      <div class="ats-success-title">Work Found</div>
-      <div class="ats-success-message">
-        Details for the requested work are displayed below.
-      </div>
-      <div class="ats-summary ats-summary-access">
-        ${accessData.atsId !== null ? `
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">ATS ID</div>
-          <div class="ats-summary-value">${accessData.atsId}</div>
-        </div>
-        ` : ''}
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">Title</div>
-          <div class="ats-summary-value">${escapeHtml(accessData.title)}</div>
-        </div>
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">Network</div>
-          <div class="ats-summary-value">${escapeHtml(accessData.network)}</div>
-        </div>
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">Owner Address</div>
-          <div class="ats-summary-value ats-monospace-sm">${escapeHtml(accessData.ownerAddress)}</div>
-        </div>
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">Latest Version</div>
-          <div class="ats-summary-value">${accessData.latestVersion}</div>
-        </div>
-        ${accessData.latestCommitment ? `
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">Latest Commitment</div>
-          <div class="ats-summary-value ats-monospace-sm">${escapeHtml(accessData.latestCommitment)}</div>
-        </div>
-        ` : ''}
-        ${accessData.createdAt ? `
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">Created At</div>
-          <div class="ats-summary-value">${escapeHtml(accessData.createdAt)}</div>
-        </div>
-        ` : ''}
-      </div>
-      <div>
-        <button type="button" class="ats-btn ats-btn-secondary" id="reset-btn" data-action="reset">
-          Look up another work
-        </button>
-      </div>
+      <button type="button" class="ats-btn ats-btn-primary" id="next-btn" data-action="next" ${loading ? 'disabled' : ''}>
+        ${loading ? 'Verifying...' : `Verify & continue ${ICONS.arrowRight}`}
+      </button>
     </div>
   `;
 }

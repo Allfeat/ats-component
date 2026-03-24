@@ -43,7 +43,6 @@ import {
   renderFailedScreen,
   renderTokenExpiredOverlay,
   renderAccessCodeStep,
-  renderAccessCompleteScreen,
   getFormSteps,
 } from './form/renderer';
 import { formatFileSize } from './utils/helpers';
@@ -153,8 +152,8 @@ export class AllfeatRegister extends HTMLElement {
     // Apply primary color from CSS variable if host has it
     this.updatePrimaryColor();
 
-    // Set initial sub-step for access/update mode
-    if (this.mode === 'access' || this.mode === 'update') {
+    // Set initial sub-step for update mode
+    if (this.mode === 'update') {
       this.state.formSubStep = 'access_code';
     }
 
@@ -199,7 +198,7 @@ export class AllfeatRegister extends HTMLElement {
       case 'mode':
         // Reset form when mode changes
         this.state = createDefaultComponentState();
-        if (newValue === 'access' || newValue === 'update') {
+        if (newValue === 'update') {
           this.state.formSubStep = 'access_code';
         }
         this.render();
@@ -373,9 +372,7 @@ export class AllfeatRegister extends HTMLElement {
         );
         break;
       case 'COMPLETE':
-        if (this.mode === 'access' && this.state.accessData) {
-          content = renderAccessCompleteScreen(this.state.accessData);
-        } else if (this.state.completionData) {
+        if (this.state.completionData) {
           content = renderCompleteScreen(
             this.state.completionData.atsId,
             this.state.completionData.txHash,
@@ -402,16 +399,11 @@ export class AllfeatRegister extends HTMLElement {
   private renderFormScreen(): string {
     const { formSubStep, formState, formErrors } = this.state;
 
-    // Access mode: single step, no step indicator
-    if (this.mode === 'access') {
-      return renderAccessCodeStep(formState.accessCode, { accessCode: formErrors.accessCode });
-    }
-
     let content = renderStepIndicator(formSubStep, this.mode);
 
     switch (formSubStep) {
       case 'access_code':
-        content += renderAccessCodeStep(formState.accessCode, { accessCode: formErrors.accessCode }, 'update', this.state.submitting);
+        content += renderAccessCodeStep(formState.accessCode, { accessCode: formErrors.accessCode }, this.state.submitting);
         break;
       case 'file':
         content += renderFileStep(formState, this.mode, this.maxFileSize, { file: formErrors.file });
@@ -784,7 +776,7 @@ export class AllfeatRegister extends HTMLElement {
     this.state.trackingStep = '';
     this.state.trackingProgress = 0;
 
-    if (this.mode === 'access' || this.mode === 'update') {
+    if (this.mode === 'update') {
       this.state.formSubStep = 'access_code';
       this.state.accessData = null;
     } else {
@@ -801,9 +793,6 @@ export class AllfeatRegister extends HTMLElement {
   private async handleSubmit(): Promise<void> {
     if (this.state.submitting) return;
 
-    // Validate current step before submitting (needed for access mode)
-    if (this.mode === 'access' && !this.validateCurrentStep()) return;
-
     if (!this.token) {
       this.transitionToFailed('No authentication token provided. Please set the token attribute.');
       return;
@@ -814,9 +803,7 @@ export class AllfeatRegister extends HTMLElement {
     this.render();
 
     try {
-      if (this.mode === 'access') {
-        await this.executeAccessFlow();
-      } else if (this.mode === 'register') {
+      if (this.mode === 'register') {
         await this.executeRegisterFlow(formState);
       } else {
         await this.executeUpdateFlow(formState);
@@ -931,37 +918,6 @@ export class AllfeatRegister extends HTMLElement {
     // Step 5: Track
     this.transitionToScreen('TRACKING');
     await this.waitForTransaction(confirmResponse.ws_url, confirmResponse.status_url, confirmResponse.access_code);
-  }
-
-  // ============================================
-  // Access Flow
-  // ============================================
-
-  private async executeAccessFlow(): Promise<void> {
-    const accessCode = this.state.formState.accessCode.trim();
-    const onTokenExpired = () => this.handleTokenExpired('access', () => this.handleSubmit());
-
-    this.transitionToScreen('CONFIRMING');
-
-    const result = await fetchAccessWork(
-      this.atsUrl,
-      this.token,
-      this.siteKey,
-      accessCode,
-      onTokenExpired,
-    );
-
-    this.state.accessData = this.mapAccessWorkResponse(result);
-
-    dispatchComplete(this, {
-      atsId: result.ats_id ?? 0,
-      txHash: '',
-      blockNumber: 0,
-      explorerUrl: '',
-      accessCode,
-    });
-
-    this.transitionToScreen('COMPLETE');
   }
 
   // ============================================

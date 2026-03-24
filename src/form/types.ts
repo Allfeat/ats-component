@@ -50,7 +50,7 @@ export interface FormState {
   title: string;
   /** List of creators attached to the work. */
   creators: CreatorFormData[];
-  /** Access code for update/access modes. */
+  /** Access code for update mode. */
   accessCode: string;
 }
 

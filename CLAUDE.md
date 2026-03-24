@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A vanilla TypeScript Web Component (`<ats-widget>`) for registering, updating, and accessing creative works on the Allfeat blockchain. No framework — just Custom Elements API with Shadow DOM. Single runtime dependency: `zod`.
+A vanilla TypeScript Web Component (`<ats-widget>`) for registering and updating creative works on the Allfeat blockchain. No framework — just Custom Elements API with Shadow DOM. Single runtime dependency: `zod`.
 
 ## Commands
 
@@ -24,7 +24,7 @@ There are no tests or linting tools configured. TypeScript strict mode is the pr
 
 `src/allfeat-register.ts` — `AllfeatRegister extends HTMLElement` is the entire component. It manages:
 - **Screen state machine**: `FORM → UPLOAD → CONFIRMING → TRACKING → COMPLETE / FAILED`
-- **Form sub-steps** vary by mode (`register`, `update`, `access`)
+- **Form sub-steps** vary by mode (`register`, `update`)
 - **Event delegation**: single event listeners on the container route via `data-action` attributes
 - **Render-on-state-change**: all UI updates replace `container.innerHTML` with pure HTML strings from renderers
 

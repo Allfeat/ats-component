@@ -30,7 +30,7 @@ Fired once when the widget is mounted and initialized.
 
 ```typescript
 interface ReadyDetail {
-  mode: 'register' | 'update' | 'access';
+  mode: 'register' | 'update';
 }
 ```
 
@@ -141,8 +141,6 @@ interface CompleteDetail {
   accessCode?: string;    // Access code (register mode only)
 }
 ```
-
-In **access** mode, `txHash` is empty, `blockNumber` is 0, and `explorerUrl` is empty — no transaction is performed.
 
 ---
 

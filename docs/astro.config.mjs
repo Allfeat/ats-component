@@ -63,7 +63,6 @@ export default defineConfig({
             { label: "Events & Callbacks", slug: "guides/events" },
             { label: "Styling & Theming", slug: "guides/styling" },
             { label: "Update Mode", slug: "guides/update-mode" },
-            { label: "Access Mode", slug: "guides/access-mode" },
             { label: "Pricing & Credits", slug: "guides/pricing" },
             { label: "Error Handling", slug: "guides/error-handling" },
           ],
