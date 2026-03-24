@@ -13,7 +13,7 @@ async function requestToken(mode: 'register' | 'update') {
     method: 'POST',
     body: {
       action_type: actionType,
-      allowed_network: mode === 'register' ? network : null,
+      allowed_network: network,
     },
   });
 
