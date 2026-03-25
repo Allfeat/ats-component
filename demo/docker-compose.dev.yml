@@ -9,9 +9,9 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       # Server-only (private) — uses host.docker.internal to reach host services
-      NUXT_ORGANIZATIONS_URL: http://host.docker.internal:13008
+      NUXT_ORGANIZATIONS_URL: http://host.docker.internal:3008
       NUXT_SECRET_KEY: csk_0000000000000000000000000000000000000000000000000000000000000000
       # Public (exposed to client) — ats-url is used by the browser, so it stays localhost
-      NUXT_PUBLIC_ATS_URL: http://localhost:13002
+      NUXT_PUBLIC_ATS_URL: http://localhost:3002
       NUXT_PUBLIC_SITE_KEY: cpk_0000000000000000000000000000000000000000000000000000000000000000
       NUXT_PUBLIC_NETWORK: mainnet

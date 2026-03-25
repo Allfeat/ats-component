@@ -1,10 +1,10 @@
 <script setup lang="ts">
 // --------------- Config state ---------------
 const config = reactive({
-  organizationsUrl: 'http://localhost:13008',
+  organizationsUrl: 'http://localhost:3008',
   siteKey: 'cpk_0000000000000000000000000000000000000000000000000000000000000000',
   secretKey: 'csk_0000000000000000000000000000000000000000000000000000000000000000',
-  atsUrl: 'http://localhost:13002',
+  atsUrl: 'http://localhost:3002',
   network: 'testnet',
   allowedAtsId: '',
   mode: 'register' as 'register' | 'update',

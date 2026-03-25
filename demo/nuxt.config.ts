@@ -12,12 +12,12 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     // Server-only (private) — overridden by NUXT_ORGANIZATIONS_URL, NUXT_SECRET_KEY
-    organizationsUrl: 'http://localhost:13008',
+    organizationsUrl: 'http://localhost:3008',
     secretKey: 'csk_0000000000000000000000000000000000000000000000000000000000000000',
 
     // Public (exposed to client) — overridden by NUXT_PUBLIC_ATS_URL, etc.
     public: {
-      atsUrl: 'http://localhost:13002',
+      atsUrl: 'http://localhost:3002',
       siteKey: 'cpk_0000000000000000000000000000000000000000000000000000000000000000',
       network: 'mainnet',
     },
