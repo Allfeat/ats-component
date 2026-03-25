@@ -94,7 +94,7 @@ onMounted(() => {
 });
 
 useHead({
-  title: 'Register Your Work - MusicDash',
+  title: 'Protect Your Work - MusicDash',
   link: [
     { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
     { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
@@ -127,7 +127,7 @@ useHead({
     <main class="main-content">
       <div class="page-container">
         <div class="page-header">
-          <h1 class="page-title">Register Your Work</h1>
+          <h1 class="page-title">Protect Your Work</h1>
           <p class="page-subtitle">
             Protect your creative work on the blockchain with timestamped proof of ownership
           </p>
@@ -138,7 +138,7 @@ useHead({
               :class="['mode-btn', { active: activeMode === 'register' }]"
               @click="switchMode('register')"
             >
-              Register
+              Protect
             </button>
             <button
               :class="['mode-btn', { active: activeMode === 'update' }]"
