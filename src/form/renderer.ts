@@ -434,9 +434,11 @@ export function renderCompleteScreen(
       <div class="ats-success-icon-circle">
         ${ICONS.checkLg}
       </div>
-      <div class="ats-success-title">${isUpdate ? 'Version Updated!' : 'Work Protected!'}</div>
+      <div class="ats-success-title">${isUpdate ? 'New version of your work protected!' : 'Work Protected!'}</div>
       <div class="ats-success-message">
-        Your work has been successfully submitted and permanently protected on the blockchain.
+        ${isUpdate
+          ? 'The new version of your work has been successfully submitted and permanently protected on the blockchain.'
+          : 'Your work has been successfully submitted and permanently protected on the blockchain.'}
         The information is now immutable and cannot be changed.
       </div>
 
