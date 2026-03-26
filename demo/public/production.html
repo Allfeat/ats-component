@@ -400,22 +400,23 @@
     }
 
     // ------------------------------------------
-    // Step 3: Handle token expiry
+    // Step 3: Handle token expiry & reset
     // ------------------------------------------
-    // When the widget gets a 401, it emits
-    // allfeat:token-expired and pauses. We fetch
-    // a new token and call setToken() to resume.
+    // The widget emits allfeat:token-expired when:
+    // - it gets a 401 (pendingAction = 'register'|'update'|'download')
+    // - the user clicks "Submit another update" / "Protect another work" (pendingAction = 'reset')
+    // In both cases, fetch a fresh token and call setToken().
 
     widget.addEventListener('allfeat:token-expired', async (e) => {
-      console.log('[MusicDash] Token expired, refreshing...', e.detail);
+      const isReset = e.detail?.pendingAction === 'reset';
+      console.log(`[MusicDash] ${isReset ? 'New session requested' : 'Token expired'}, fetching token...`, e.detail);
 
       try {
         const token = await fetchTokenFromBackend();
         widget.setToken(token);
-        console.log('[MusicDash] Token refreshed, widget resuming');
+        console.log(`[MusicDash] Token refreshed${isReset ? '' : ', widget resuming'}`);
       } catch (err) {
         console.error('[MusicDash] Token refresh failed:', err);
-        // Widget will show FAILED after 60s timeout
       }
     });
 

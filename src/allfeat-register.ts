@@ -234,7 +234,11 @@ export class AllfeatRegister extends HTMLElement {
       this.tokenExpiryTimeout = null;
     }
     this.state = createDefaultComponentState();
+    if (this.mode === 'update') {
+      this.state.formSubStep = 'access_code';
+    }
     this.render();
+    dispatchTokenExpired(this, { pendingAction: 'reset' });
   }
 
   getState(): { screen: Screen; jobId?: string; transactionId?: string; atsId?: number | null; accessCode?: string } {

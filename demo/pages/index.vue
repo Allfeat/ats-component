@@ -190,17 +190,20 @@ onMounted(() => {
   const widget = widgetRef.value;
   if (!widget) return;
 
-  // Token expired → auto-refresh via BFF
+  // Token expired or reset → auto-refresh via BFF
   widget.addEventListener('allfeat:token-expired', async (e: Event) => {
     const detail = (e as CustomEvent).detail;
+    const isReset = detail?.pendingAction === 'reset';
     logEvent('allfeat:token-expired', detail);
-    setStatus('warn', 'Token expired — refreshing...');
+    setStatus('warn', isReset ? 'New session — fetching token...' : 'Token expired — refreshing...');
 
     try {
       const { token, expires_in } = await requestToken();
       logEvent('ats:token-refreshed', { expires_in });
       (widget as any).setToken(token);
-      setStatus('ok', `Token refreshed (${expires_in}s TTL) — retry in progress`);
+      setStatus('ok', isReset
+        ? `Token ready (${expires_in}s TTL) — widget reset`
+        : `Token refreshed (${expires_in}s TTL) — retry in progress`);
     } catch (err: any) {
       const msg = err?.data?.message || err?.data?.statusMessage || err?.message || String(err);
       setStatus('err', 'Token refresh failed: ' + msg);

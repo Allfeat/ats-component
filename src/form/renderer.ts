@@ -470,7 +470,7 @@ export function renderCompleteScreen(
 
       <div class="ats-mt-lg">
         <button type="button" class="ats-btn ats-btn-secondary" id="reset-btn" data-action="reset">
-          ${isUpdate ? 'Submit another update' : 'Protect another work'}
+          ${isUpdate ? 'Protect another version of a work' : 'Protect another work'}
         </button>
       </div>
     </div>

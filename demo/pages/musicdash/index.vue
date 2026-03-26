@@ -54,8 +54,6 @@ async function configureWidget(mode: 'register' | 'update') {
 function switchMode(mode: 'register' | 'update') {
   if (mode === activeMode.value && !loading.value) return;
   activeMode.value = mode;
-  const widget = widgetRef.value as any;
-  if (widget?.reset) widget.reset();
   configureWidget(mode);
 }
 
