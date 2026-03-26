@@ -152,10 +152,22 @@ Pricing details are returned during the `prepare` phase of the registration flow
 The widget is distributed as a static JavaScript file via CDN:
 
 ```html
-<script src="https://cdn.allfeat.org/ats/v1/ats-widget.iife.js"></script>
+<!-- Recommended: pin to major version (auto-receives patches) -->
+<script src="https://cdn.allfeat.org/widgets/ats/v1/ats-widget.iife.js"></script>
 ```
 
 Include it with a `<script>` tag — no package manager required. The `<ats-widget>` custom element is immediately available.
+
+### Version channels
+
+| Channel | URL | Cache | Use case |
+|---------|-----|-------|----------|
+| **Pinned** | `cdn.allfeat.org/widgets/ats/1.2.0/ats-widget.iife.js` | Immutable | Reproducible builds |
+| **Major** | `cdn.allfeat.org/widgets/ats/v1/ats-widget.iife.js` | 1h | Production (recommended) |
+| **Latest** | `cdn.allfeat.org/widgets/ats/latest/ats-widget.iife.js` | 5min | Always latest stable |
+| **Dev** | `cdn.allfeat.org/widgets/ats/dev/ats-widget.iife.js` | 5min | Testing only |
+
+ESM builds are also available (`ats-widget.esm.js`).
 
 Alternatively, install via npm for bundled projects (coming soon):
 

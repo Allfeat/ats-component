@@ -1,0 +1,132 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: [self-hosted, Linux, X64, ovh]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Extract and validate version
+        id: version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "tag=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "pkg=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match package.json version ($PKG_VERSION)"
+            exit 1
+          fi
+          MAJOR=$(echo "$TAG_VERSION" | cut -d. -f1)
+          echo "major=$MAJOR" >> "$GITHUB_OUTPUT"
+
+      - name: Upload versioned files to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+          AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+          AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.eu.r2.cloudflarestorage.com
+        run: |
+          VERSION="${{ steps.version.outputs.tag }}"
+          BUCKET="${{ secrets.R2_BUCKET_NAME }}"
+
+          for file in ats-widget.iife.js ats-widget.esm.js; do
+            if [ -f "dist/$file" ]; then
+              aws s3 cp "dist/$file" "s3://$BUCKET/$VERSION/$file" \
+                --endpoint-url "$R2_ENDPOINT" \
+                --region auto \
+                --content-type "application/javascript" \
+                --cache-control "public, max-age=31536000, immutable"
+            fi
+          done
+
+      - name: Upload major version alias to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+          AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+          AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.eu.r2.cloudflarestorage.com
+        run: |
+          MAJOR="v${{ steps.version.outputs.major }}"
+          BUCKET="${{ secrets.R2_BUCKET_NAME }}"
+
+          for file in ats-widget.iife.js ats-widget.esm.js; do
+            if [ -f "dist/$file" ]; then
+              aws s3 cp "dist/$file" "s3://$BUCKET/$MAJOR/$file" \
+                --endpoint-url "$R2_ENDPOINT" \
+                --region auto \
+                --content-type "application/javascript" \
+                --cache-control "public, max-age=3600"
+            fi
+          done
+
+      - name: Upload latest alias to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+          AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+          AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.eu.r2.cloudflarestorage.com
+        run: |
+          BUCKET="${{ secrets.R2_BUCKET_NAME }}"
+
+          for file in ats-widget.iife.js ats-widget.esm.js; do
+            if [ -f "dist/$file" ]; then
+              aws s3 cp "dist/$file" "s3://$BUCKET/latest/$file" \
+                --endpoint-url "$R2_ENDPOINT" \
+                --region auto \
+                --content-type "application/javascript" \
+                --cache-control "public, max-age=300"
+            fi
+          done
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.tag }}"
+
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --generate-notes \
+            dist/ats-widget.iife.js \
+            dist/ats-widget.esm.js \
+            dist/ats-widget.cjs.js
+
+      - name: Summary
+        run: |
+          VERSION="${{ steps.version.outputs.tag }}"
+          MAJOR="v${{ steps.version.outputs.major }}"
+          echo "## Release v$VERSION" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### CDN URLs" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Channel | IIFE | ESM |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---------|------|-----|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Pinned** | \`https://cdn.allfeat.org/widgets/ats/$VERSION/ats-widget.iife.js\` | \`https://cdn.allfeat.org/widgets/ats/$VERSION/ats-widget.esm.js\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Major ($MAJOR)** | \`https://cdn.allfeat.org/widgets/ats/$MAJOR/ats-widget.iife.js\` | \`https://cdn.allfeat.org/widgets/ats/$MAJOR/ats-widget.esm.js\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Latest** | \`https://cdn.allfeat.org/widgets/ats/latest/ats-widget.iife.js\` | \`https://cdn.allfeat.org/widgets/ats/latest/ats-widget.esm.js\` |" >> "$GITHUB_STEP_SUMMARY"
