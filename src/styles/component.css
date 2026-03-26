@@ -704,6 +704,7 @@
 .ats-callout-primary {
   border-color: var(--ats-primary);
   background: var(--ats-primary-light);
+  text-align: center;
 }
 
 .ats-callout-title {
@@ -714,6 +715,10 @@
   font-weight: 600;
   color: var(--ats-text);
   margin-bottom: 6px;
+}
+
+.ats-callout-primary .ats-callout-title {
+  justify-content: center;
 }
 
 .ats-callout-warning .ats-callout-title {

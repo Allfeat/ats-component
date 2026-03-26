@@ -424,9 +424,6 @@ export function renderTrackingScreen(
 // ============================================
 
 export function renderCompleteScreen(
-  atsId: number | null,
-  txHash: string,
-  blockNumber: number,
   explorerUrl: string,
   mode: Mode,
   accessCode?: string,
@@ -439,9 +436,8 @@ export function renderCompleteScreen(
       </div>
       <div class="ats-success-title">${isUpdate ? 'Version Updated!' : 'Work Protected!'}</div>
       <div class="ats-success-message">
-        ${isUpdate
-          ? 'Your new version has been recorded on the blockchain.'
-          : 'Your work has been permanently protected on the blockchain.'}
+        Your work has been successfully submitted and permanently protected on the blockchain.
+        The information is now immutable and cannot be changed.
       </div>
 
       ${accessCode ? `
@@ -463,23 +459,6 @@ export function renderCompleteScreen(
         <button type="button" class="ats-btn ats-btn-primary ats-mt-sm" id="download-btn" data-action="download">
           Download Certificate
         </button>
-      </div>
-
-      <div class="ats-summary ats-summary-compact">
-        ${atsId != null ? `
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">ATS ID</div>
-          <div class="ats-summary-value">${atsId}</div>
-        </div>
-        ` : ''}
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">Transaction</div>
-          <div class="ats-summary-value ats-monospace-sm">${escapeHtml(txHash)}</div>
-        </div>
-        <div class="ats-summary-section">
-          <div class="ats-summary-label">Block</div>
-          <div class="ats-summary-value">${blockNumber}</div>
-        </div>
       </div>
 
       <div class="ats-explorer-container ats-mt-sm">

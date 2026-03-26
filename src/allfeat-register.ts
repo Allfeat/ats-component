@@ -374,9 +374,6 @@ export class AllfeatRegister extends HTMLElement {
       case 'COMPLETE':
         if (this.state.completionData) {
           content = renderCompleteScreen(
-            this.state.completionData.atsId,
-            this.state.completionData.txHash,
-            this.state.completionData.blockNumber,
             this.state.completionData.explorerUrl,
             this.mode,
             this.state.completionData.accessCode,
