@@ -666,6 +666,7 @@ export class AllfeatRegister extends HTMLElement {
         const errorMessage = error instanceof Error ? error.message : 'Failed to verify access code';
         this.state.formErrors = { accessCode: errorMessage };
         this.render();
+        this.scrollToFirstError();
         return;
       }
     }
@@ -704,6 +705,7 @@ export class AllfeatRegister extends HTMLElement {
         if (this.mode === 'register' && !formState.file) {
           this.state.formErrors = { file: 'Please select a file' };
           this.render();
+          this.scrollToFirstError();
           return false;
         }
         break;
@@ -718,6 +720,7 @@ export class AllfeatRegister extends HTMLElement {
         if (Object.keys(errors).length > 0) {
           this.state.formErrors = errors;
           this.render();
+          this.scrollToFirstError();
           return false;
         }
         break;
@@ -742,6 +745,7 @@ export class AllfeatRegister extends HTMLElement {
         if (hasErrors) {
           this.state.formErrors = { creators: creatorErrors };
           this.render();
+          this.scrollToFirstError();
           return false;
         }
         break;
@@ -751,11 +755,13 @@ export class AllfeatRegister extends HTMLElement {
         if (!formState.accessCode.trim()) {
           this.state.formErrors = { accessCode: 'Access code is required' };
           this.render();
+          this.scrollToFirstError();
           return false;
         }
         if (!ACCESS_CODE_REGEX.test(formState.accessCode.trim())) {
           this.state.formErrors = { accessCode: 'Invalid format. Must start with atc_ followed by 64 hex characters.' };
           this.render();
+          this.scrollToFirstError();
           return false;
         }
         break;
@@ -763,6 +769,13 @@ export class AllfeatRegister extends HTMLElement {
     }
 
     return true;
+  }
+
+  private scrollToFirstError(): void {
+    const firstError = this.shadow.querySelector('.ats-error-message');
+    if (firstError) {
+      firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   }
 
   private handleRetry(): void {
