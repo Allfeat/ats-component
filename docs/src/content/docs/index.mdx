@@ -32,9 +32,6 @@ The **ATS Widget** is a plug-and-play web component that allows organizations to
   <Card title="Update" icon="pen">
     Register a new version of an existing work — update contributors, metadata, or the audio file itself.
   </Card>
-  <Card title="Access" icon="magnifier">
-    Consult the on-chain details of a registered work using its access code.
-  </Card>
   <Card title="Theming" icon="seti:css">
     Fully customizable via CSS variables — adapt the widget to match your design system.
   </Card>
@@ -140,8 +137,9 @@ Each ATS registration or version update incurs additional fees billed to your or
 | **Network fee** | Blockchain transaction cost, estimated via dry-run simulation |
 | **Deposit** | On-chain storage deposit for the work or version |
 | **Service fee** | Allfeat platform fee (applied as basis points on the transaction) |
+| **Storage fee** | Media storage fee — free up to 10 MB, increases progressively above |
 
-The **total price** is the sum of all three. Fees are deducted from your organization's credit balance automatically. The session creation will fail if your balance is insufficient.
+The **total price** is the sum of all four. Fees are deducted from your organization's credit balance automatically. The session creation will fail if your balance is insufficient.
 
 <Aside type="note">
 Pricing details are returned during the `prepare` phase of the registration flow. The widget handles all pricing logic internally — your integration doesn't need to manage credits directly.

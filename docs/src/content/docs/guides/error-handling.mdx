@@ -71,7 +71,7 @@ The widget has built-in retry logic for transient failures:
 
 | Scenario | Behavior |
 |----------|----------|
-| **File upload** | Up to 3 retries with exponential backoff (1s, 2s, 4s) |
+| **File upload** | 3 total attempts (2 retries) with exponential backoff (1s, 2s) |
 | **Token expiry** | Pauses and waits for a new token (60-second timeout) |
 | **Rate limiting (429)** | Up to 2 retries with backoff (1s, 2s, or `Retry-After` header) |
 | **Transaction polling** | Polls every 3s with a 120-second timeout |

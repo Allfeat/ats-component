@@ -13,18 +13,19 @@ Access to the ATS Widget requires an **active subscription** with the Allfeat te
 
 ## Per-Registration Fees
 
-Every blockchain operation has three fee components:
+Every blockchain operation has four fee components:
 
 | Fee | Description |
 |-----|-------------|
 | **Network fee** | The blockchain transaction cost. Estimated via a dry-run simulation before the actual submission. |
 | **Deposit** | On-chain storage deposit required by the Allfeat blockchain. Includes a base deposit (for new works) or a version deposit (for version updates). |
 | **Service fee** | Allfeat platform fee, calculated as a percentage (basis points) of the transaction cost. |
+| **Storage fee** | Media storage fee. Audio files up to **10 MB** are stored for free. Above 10 MB, a storage fee is charged that increases progressively with file size. |
 
-The **total price** displayed in the widget is the sum of all three:
+The **total price** displayed in the widget is the sum of all four:
 
 ```
-total_price = network_fee + deposit + service_fee
+total_price = network_fee + deposit + service_fee + storage_fee
 ```
 
 ## How It Works
@@ -38,6 +39,7 @@ The pricing is calculated during the **prepare** phase of the registration flow:
    - `network_fee_credits` — estimated blockchain transaction cost
    - `total_deposit_credits` — on-chain storage deposit
    - `service_fee_credits` — platform service fee
+   - `storage_fee_credits` — media storage fee (0 for files up to 10 MB)
    - `total_price_credits` — sum of all fees
 5. The widget proceeds to confirmation and deducts credits automatically
 
@@ -88,10 +90,9 @@ Credits can be purchased and managed through the [Allfeat Dashboard](https://app
 
 | Operation | Fees Included |
 |-----------|---------------|
-| **Register** (new work) | Network fee + base deposit + version deposit + service fee |
-| **Update** (new version) | Network fee + version deposit + service fee |
-| **Access** (read-only) | No fees — access mode is free |
+| **Register** (new work) | Network fee + base deposit + version deposit + service fee + storage fee |
+| **Update** (new version) | Network fee + version deposit + service fee + storage fee |
 
-<Aside type="tip">
-The **access** mode (`action_type: "access"`) does not incur any fees, making it suitable for frequent lookups.
+<Aside type="note">
+The **storage fee** only applies when the uploaded audio file exceeds 10 MB. For files up to 10 MB, the storage fee is 0.
 </Aside>

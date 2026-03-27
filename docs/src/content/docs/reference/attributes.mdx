@@ -16,6 +16,7 @@ Set these directly on the `<ats-widget>` element.
 | `network` | `"testnet" \| "mainnet"` | No | `"testnet"` | Blockchain network to use |
 | `mode` | `"register" \| "update"` | No | `"register"` | Operation mode |
 | `token` | `string` | No | — | JWT token (prefer `setToken()` instead — see [Authentication](/guides/authentication/)) |
+| `max-file-size` | `number` | No | — | Maximum file size in bytes. When set, the widget uses the lower value between this and the API-provided limit. Useful for organizations that want to enforce a stricter file size limit. |
 
 ### Example
 
@@ -66,6 +67,10 @@ Reset the widget to its initial state. Clears the form, any error state, and ret
 widget.reset();
 ```
 
+<Aside type="caution">
+Calling `reset()` also emits an `allfeat:token-expired` event with `pendingAction: "reset"`. This signals your application to provide a fresh token, since the previous token is one-time-use and has already been consumed.
+</Aside>
+
 ### `getState(): object`
 
 Returns the widget's current internal state. Useful for debugging and analytics.
@@ -83,7 +88,7 @@ const state = widget.getState();
 
 ## Observed Attributes
 
-The widget reacts to changes on these attributes: `site-key`, `token`, `ats-url`, `network`, `mode`.
+The widget reacts to changes on these attributes: `site-key`, `token`, `ats-url`, `network`, `mode`, `max-file-size`.
 
 You can update attributes dynamically:
 
@@ -102,7 +107,7 @@ widget.setAttribute('mode', 'update');
 | Max creators | 20 | Maximum number of creators per work |
 | Max title length | 200 characters | Maximum length of the work title |
 | Default max file size | 50 MB | Default maximum audio file size (overridden by API response) |
-| Upload retries | 3 | Upload retry attempts with exponential backoff (1s, 2s, 4s) |
+| Upload retries | 3 total attempts | 2 retries with exponential backoff (1s, 2s) |
 | Polling interval | 3 seconds | Transaction status polling interval |
 | Polling timeout | 120 seconds | Maximum time waiting for blockchain confirmation |
 | Token refresh timeout | 60 seconds | Time the widget waits for a new token before failing |
@@ -170,8 +175,13 @@ import type {
   CreatorFormData,       // Creator data shape
   FormState,             // Full form data shape
   FormSubStep,           // 'file' | 'title' | 'creators' | 'review' | 'access_code'
+  FormErrors,            // Per-field validation errors
   ComponentState,        // Full component state machine
   CompletionData,        // Post-registration data
+  AccessData,            // Work details fetched in access mode
+  Screen,                // 'FORM' | 'UPLOAD' | 'CONFIRMING' | 'TRACKING' | 'COMPLETE' | 'FAILED'
+  Mode,                  // 'register' | 'update'
+  Network,               // 'testnet' | 'mainnet'
   // Event detail types
   ReadyDetail,
   UploadStartDetail,
@@ -188,7 +198,16 @@ import type {
   InitWorkResponse,
   PrepareWorkResponse,
   ConfirmWorkResponse,
+  InitVersionUploadResponse,
+  InitVersionResponse,
+  PrepareVersionResponse,
+  ConfirmVersionResponse,
   TrackingStep,
+  WsMessage,
+  WsMessageType,
+  WsStepDetails,
+  TransactionStatusResponse,
+  DownloadCertificateResponse,
 } from 'allfeat-ats-component';
 
 import {
@@ -202,5 +221,8 @@ import {
   workFormSchema,          // Zod form validator
   createEmptyCreator,      // Factory for blank creator
   createDefaultFormState,  // Factory for default form state
+  createDefaultComponentState, // Factory for default component state
+  formatFileSize,          // Human-readable file size string
+  escapeHtml,              // HTML entity escaping
 } from 'allfeat-ats-component';
 ```

@@ -55,7 +55,7 @@ User → Your Frontend → Your Backend → Allfeat API
            },
            body: JSON.stringify({
              secret_key: process.env.ALLFEAT_SECRET_KEY,
-             action_type: 'register',       // or 'update_version' or 'access'
+             action_type: 'register',       // or 'update_version'
              allowed_network: 'testnet',     // or 'mainnet'
              // allowed_ats_id: 42,          // optional, restricts to a specific work
            }),
@@ -110,7 +110,7 @@ User → Your Frontend → Your Backend → Allfeat API
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `secret_key` | string | Yes | Your organization's secret key (`csk_...`) |
-| `action_type` | string | Yes | `"register"`, `"update_version"`, or `"access"` |
+| `action_type` | string | Yes | `"register"` or `"update_version"` |
 | `allowed_network` | string | Yes | `"testnet"` or `"mainnet"` |
 | `allowed_ats_id` | number | No | Restricts the token to a specific ATS work ID |
 
@@ -127,7 +127,6 @@ User → Your Frontend → Your Backend → Allfeat API
 |--------|-------|-------------|
 | `register` | `mode="register"` | Create a new ATS work |
 | `update_version` | `mode="update"` | Register a new version of an existing work |
-| `access` | `mode="access"` | Consult an existing work's details |
 
 ## One-Time-Use Tokens
 
@@ -162,7 +161,7 @@ widget.addEventListener('allfeat:token-expired', async (e) => {
 ```
 
 <Aside type="tip">
-The `pendingAction` field indicates which action was interrupted (e.g., `"register"`, `"update"`, `"access"`, `"download"`). This can be useful for logging and analytics.
+The `pendingAction` field indicates which action was interrupted (e.g., `"register"`, `"update"`, `"download"`). This can be useful for logging and analytics.
 </Aside>
 
 ## Domain Allowlist
