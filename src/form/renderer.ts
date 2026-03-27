@@ -134,7 +134,6 @@ export function renderFileStep(
       ${isUpdate ? `<button type="button" class="ats-btn ats-btn-secondary" id="back-btn" data-action="back">Back</button>` : ''}
       <button type="button" class="ats-btn ats-btn-primary" id="next-btn" data-action="next" ${!hasFile && mode === 'register' ? 'disabled' : ''}>
         ${isUpdate && !hasFile ? 'Skip' : 'Next'}
-        ${ICONS.arrowRight}
       </button>
     </div>
   `;
@@ -164,7 +163,7 @@ export function renderTitleStep(
     </div>
     <div class="ats-btn-group ats-btn-group-between">
       <button type="button" class="ats-btn ats-btn-secondary" id="back-btn" data-action="back">Back</button>
-      <button type="button" class="ats-btn ats-btn-primary" id="next-btn" data-action="next">Continue</button>
+      <button type="button" class="ats-btn ats-btn-primary" id="next-btn" data-action="next">Next</button>
     </div>
   `;
 }
@@ -283,7 +282,7 @@ export function renderCreatorsStep(
     ` : ''}
     <div class="ats-btn-group ats-btn-group-between">
       <button type="button" class="ats-btn ats-btn-secondary" id="back-btn" data-action="back">Back</button>
-      <button type="button" class="ats-btn ats-btn-primary" id="next-btn" data-action="next">Continue</button>
+      <button type="button" class="ats-btn ats-btn-primary" id="next-btn" data-action="next">Next</button>
     </div>
   `;
 }
@@ -531,7 +530,7 @@ export function renderAccessCodeStep(
     </div>
     <div class="ats-btn-group ats-btn-group-right">
       <button type="button" class="ats-btn ats-btn-primary" id="next-btn" data-action="next" ${loading ? 'disabled' : ''}>
-        ${loading ? 'Verifying...' : `Verify & continue ${ICONS.arrowRight}`}
+        ${loading ? 'Verifying...' : 'Next'}
       </button>
     </div>
   `;
