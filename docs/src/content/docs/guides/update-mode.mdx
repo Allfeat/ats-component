@@ -5,7 +5,7 @@ description: Register a new version of an existing work — update contributors,
 
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Update mode lets your end users register a **new version** of a work already on the blockchain. Common use cases include:
+Update mode lets your end users register a **new version** of a work already registered on the blockchain. Common use cases include:
 
 - The work was registered as a **work in progress** and a final version is now ready
 - **Contributors have changed** — new creators joined or existing ones were removed
@@ -79,7 +79,7 @@ When the widget opens in update mode, the user goes through the following steps:
 
 2. ### File (optional)
 
-   The user can choose to upload a new audio file or skip this step to reuse the existing one.
+   The user can choose to upload a new file or skip this step to reuse the existing one.
 
 3. ### Title
 
@@ -101,7 +101,7 @@ The full flow — the new file is uploaded to S3, a new commitment hash is gener
 
 ### Without a New File (Metadata Only)
 
-The user skips the file step. Only the creators metadata is updated on-chain, reusing the existing audio's commitment.
+The user skips the file step. Only the creators metadata is updated on-chain, reusing the existing file's commitment.
 
 ## Events
 
