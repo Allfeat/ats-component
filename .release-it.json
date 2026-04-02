@@ -5,7 +5,9 @@
     "requireBranch": "master",
     "requireCleanWorkingDir": true
   },
-  "npm": false,
+  "npm": {
+    "publish": false
+  },
   "github": {
     "release": false
   },
