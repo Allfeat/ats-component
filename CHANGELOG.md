@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.1](https://github.com/Allfeat/ats-component/compare/v1.1.0...v1.1.1) (2026-04-02)
+
+### Bug Fixes
+
+* switch CI workflows from npm/node to bun ([787e253](https://github.com/Allfeat/ats-component/commit/787e25354cace20a5db9b3775cb2f03a9d305dff))
+
 ## [1.1.0](https://github.com/Allfeat/ats-component/compare/v1.0.0...v1.1.0) (2026-04-02)
 
 ### Features
