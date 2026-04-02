@@ -68,8 +68,47 @@ Single Nuxt 3 app in `demo/` (port 3000) with two pages:
 
 Docker support (`demo/Dockerfile`, `demo/docker-compose.dev.yml`) for containerized deployment.
 
-## CI/CD
+## Releasing
 
-- `deploy-component.yml` — Builds and uploads JS bundles to Cloudflare R2 (`master` → versioned + latest, `develop` → `/dev/`)
+Releases use [release-it](https://github.com/release-it/release-it) with the [conventional-changelog](https://github.com/release-it/conventional-changelog) plugin. The version bump is inferred from conventional commits (`feat:` → minor, `fix:` → patch, `BREAKING CHANGE` → major).
+
+### Commit convention
+
+All commits should follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+feat: add new feature          → minor bump
+fix: fix something             → patch bump
+feat!: breaking change         → major bump
+docs: update readme            → no bump (not included in changelog)
+refactor: clean up code        → no bump (not included in changelog)
+```
+
+### How to release
+
+```bash
+bun run release            # Interactive: recommends bump based on commits
+bun run release -- patch   # Force patch bump
+bun run release -- minor   # Force minor bump
+bun run release -- major   # Force major bump
+bun run release -- --dry-run  # Preview without making changes
+```
+
+This will:
+1. Run typecheck + build
+2. Bump version in `package.json`
+3. Update `CHANGELOG.md` (grouped by feat/fix/etc.)
+4. Commit `release: vX.Y.Z` + tag `vX.Y.Z`
+5. Push to origin → triggers CI release workflow
+
+### CI/CD pipeline
+
+The release workflow (`.github/workflows/release.yml`) is triggered by `v*` tags and:
+1. Builds + validates tag matches `package.json` version
+2. Uploads bundles to Cloudflare R2 (3 channels: `/$VERSION/`, `/v$MAJOR/`, `/latest/`)
+3. Creates a GitHub Release with changelog from `CHANGELOG.md` + attached bundles
+
+Other workflows:
+- `deploy-component.yml` — Builds and uploads JS bundles to Cloudflare R2 on `develop` push → `/dev/`
 - `deploy-demo-musicdash.yml` — Docker build + push to GHCR
 - Both use self-hosted runners
