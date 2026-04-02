@@ -277,6 +277,8 @@ export interface AccessWorkResponse {
   latest_commitment: string | null;
   /** ISO creation timestamp, `null` if unavailable. */
   created_at: string | null;
+  /** Original filename of the uploaded asset. */
+  asset_filename: string | null;
   creators?: AccessWorkCreator[];
 }
 

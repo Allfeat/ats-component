@@ -419,7 +419,7 @@ export class AllfeatRegister extends HTMLElement {
         );
         break;
       case 'review':
-        content += renderReviewStep(formState, this.mode, this.state.submitting);
+        content += renderReviewStep(formState, this.mode, this.state.submitting, this.state.accessData);
         break;
     }
 
@@ -1010,6 +1010,7 @@ export class AllfeatRegister extends HTMLElement {
       latestVersion: result.latest_version,
       latestCommitment: result.latest_commitment,
       createdAt: result.created_at,
+      assetFilename: result.asset_filename,
     };
   }
 

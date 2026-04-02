@@ -1,4 +1,4 @@
-import type { CreatorFormData, FormState, FormSubStep } from './types';
+import type { AccessData, CreatorFormData, FormState, FormSubStep } from './types';
 import { CREATOR_ROLES } from './types';
 import { getTrackingSteps } from '../api/types';
 import type { Mode } from '../api/types';
@@ -291,14 +291,15 @@ export function renderCreatorsStep(
 // Review Step
 // ============================================
 
-export function renderReviewStep(state: FormState, mode: Mode, submitting = false): string {
+export function renderReviewStep(state: FormState, mode: Mode, submitting = false, accessData: AccessData | null = null): string {
   const isUpdate = mode === 'update';
+  const fileName = state.file?.name || accessData?.assetFilename || 'No file selected';
   return `
     <div class="ats-section-title ats-section-title-centered">Review Your Submission</div>
     <div class="ats-summary">
       <div class="ats-summary-section">
         <div class="ats-summary-label">Asset File</div>
-        <div class="ats-summary-value">${state.file?.name || 'No file selected (reusing existing)'}</div>
+        <div class="ats-summary-value">${escapeHtml(fileName)}${!state.file && accessData?.assetFilename ? ' <em>(current version)</em>' : ''}</div>
       </div>
       <div class="ats-summary-section">
         <div class="ats-summary-label">Title</div>

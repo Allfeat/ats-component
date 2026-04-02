@@ -116,6 +116,7 @@ export interface AccessData {
   latestVersion: number;
   latestCommitment: string | null;
   createdAt: string | null;
+  assetFilename: string | null;
 }
 
 /** Full internal state machine for the web component. */
