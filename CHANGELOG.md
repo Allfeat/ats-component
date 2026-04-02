@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/Allfeat/ats-component/compare/v1.1.1...v1.1.2) (2026-04-02)
+
+### Bug Fixes
+
+* bump package.json version via node hook instead of npm ([0d8c4f6](https://github.com/Allfeat/ats-component/commit/0d8c4f6817c51cf37032723b700d4da256713e30))
+* re-enable npm plugin for package.json version bumping ([9e581c6](https://github.com/Allfeat/ats-component/commit/9e581c6cc3059f49e3210ffed37f790b0f86921d))
+
 ## [1.1.1](https://github.com/Allfeat/ats-component/compare/v1.1.0...v1.1.1) (2026-04-02)
 
 ### Bug Fixes
