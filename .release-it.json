@@ -5,14 +5,13 @@
     "requireBranch": "master",
     "requireCleanWorkingDir": true
   },
-  "npm": {
-    "publish": false
-  },
+  "npm": false,
   "github": {
     "release": false
   },
   "hooks": {
-    "before:init": ["bun run typecheck", "bun run build"]
+    "before:init": ["bun run typecheck", "bun run build"],
+    "after:bump": "node -e \"const fs=require('fs');const p='./package.json';const pkg=JSON.parse(fs.readFileSync(p,'utf8'));pkg.version='${version}';fs.writeFileSync(p,JSON.stringify(pkg,null,2)+'\\n');\""
   },
   "plugins": {
     "@release-it/conventional-changelog": {
