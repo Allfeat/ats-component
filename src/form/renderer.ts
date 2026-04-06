@@ -105,6 +105,7 @@ export function renderFileStep(
   mode: Mode,
   maxFileSize: number,
   errors: { file?: string } = {},
+  existingFilename?: string | null,
 ): string {
   const hasFile = state.file !== null;
   const isUpdate = mode === 'update';
@@ -127,7 +128,7 @@ export function renderFileStep(
     <div class="ats-file-help-text">Max size: ${formatFileSize(maxFileSize)}.</div>
     ${isUpdate && !hasFile ? `
       <div class="ats-file-help-text ats-mt-sm">
-        <em>File is optional for updates — skip to reuse existing file.</em>
+        <em>File is optional for updates — skip to reuse existing file${existingFilename ? ` <strong>${escapeHtml(existingFilename)}</strong>` : ''}.</em>
       </div>
     ` : ''}
     <div class="ats-btn-group ${isUpdate ? 'ats-btn-group-between' : 'ats-btn-group-right'}">

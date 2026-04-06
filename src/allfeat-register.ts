@@ -407,7 +407,7 @@ export class AllfeatRegister extends HTMLElement {
         content += renderAccessCodeStep(formState.accessCode, { accessCode: formErrors.accessCode }, this.state.submitting);
         break;
       case 'file':
-        content += renderFileStep(formState, this.mode, this.maxFileSize, { file: formErrors.file });
+        content += renderFileStep(formState, this.mode, this.maxFileSize, { file: formErrors.file }, this.state.accessData?.assetFilename);
         break;
       case 'title':
         content += renderTitleStep(formState, formErrors.title ? { title: formErrors.title } : {});
