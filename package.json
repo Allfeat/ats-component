@@ -1,6 +1,6 @@
 {
   "name": "allfeat-ats-component",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "type": "module",
   "description": "Framework-agnostic web component for registering ATS works on Allfeat blockchain",
   "main": "dist/ats-widget.cjs.js",

@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.0](https://github.com/Allfeat/ats-component/compare/v1.1.2...v1.2.0) (2026-04-06)
+
+### Features
+
+* display existing filename in update file selection skip label ([7baee9d](https://github.com/Allfeat/ats-component/commit/7baee9d32daadfec1d4d0fb864755157e016f2ba))
+
+### Bug Fixes
+
+* rename "Asset File" label to "File" in review step ([eda1748](https://github.com/Allfeat/ats-component/commit/eda17484d9f48d416d6cac3e9962dd210d6e4ebe))
+
 ## [1.1.2](https://github.com/Allfeat/ats-component/compare/v1.1.1...v1.1.2) (2026-04-02)
 
 ### Bug Fixes
