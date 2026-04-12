@@ -74,12 +74,12 @@ export interface CompleteDetail {
   accessCode?: string;
 }
 
-/** Detail for the `allfeat:failed` event. */
+/** Detail for the `allfeat:failed` event (structured error payload). */
 export interface FailedDetail {
-  error: string;
-  code?: string;
-  /** The mode or stage where the failure occurred. */
-  stage?: Mode | string;
+  code: string;
+  message: string;
+  requestId: string | null;
+  details?: Record<string, unknown>;
 }
 
 /** Detail for the `allfeat:token-expired` event. The consumer should provide a fresh token. */
@@ -90,11 +90,11 @@ export interface TokenExpiredDetail {
 
 /** Detail for the `allfeat:error` event, emitted on recoverable or informational errors. */
 export interface ErrorDetail {
-  /** Pipeline stage where the error occurred (e.g. `"upload"`, `"prepare"`). */
+  code: string;
+  message: string;
+  requestId: string | null;
   stage: string;
-  error: string;
-  code?: string;
-  details?: unknown;
+  details?: Record<string, unknown>;
 }
 
 // ============================================
