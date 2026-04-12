@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.0.0](https://github.com/Allfeat/ats-component/compare/v1.2.0...v2.0.0) (2026-04-12)
+
+### ⚠ BREAKING CHANGES
+
+* Token refresh no longer uses per-call onTokenExpired callbacks.
+The component now uses a centralized handleError() method that routes errors
+by code to the appropriate screen (DISABLED, FAILED, or token refresh).
+* allfeat:failed and allfeat:error event payloads now use
+{code, message, requestId, details} instead of {error, code, stage}.
+
+### Features
+
+* add DISABLED screen, structured error state, requestId in FAILED screen ([01f4092](https://github.com/Allfeat/ats-component/commit/01f4092ea0e527846ae053904b0715d82143f43b))
+* add error message catalog with getErrorMessage() ([c5d77b1](https://github.com/Allfeat/ats-component/commit/c5d77b1ca4827373055f8bf890293456756bf89d))
+* add global error interceptor, DISABLED screen, unified error handling ([32736f4](https://github.com/Allfeat/ats-component/commit/32736f47b0cc864f343ef4a8a89acd16e7176a80))
+* update FailedDetail and ErrorDetail to structured error payloads ([6cd3605](https://github.com/Allfeat/ats-component/commit/6cd360522b64624506d460f5a1a7df752af9ebc7))
+
 ## [1.2.0](https://github.com/Allfeat/ats-component/compare/v1.1.2...v1.2.0) (2026-04-06)
 
 ### Features
