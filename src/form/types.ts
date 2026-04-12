@@ -163,8 +163,12 @@ export interface ComponentState {
   submitting: boolean;
 
   // Error
-  /** Current error message, `null` when no error. */
-  error: string | null;
+  /** Current error, `null` when no error. */
+  error: {
+    message: string;
+    requestId: string | null;
+    code: string | null;
+  } | null;
 }
 
 /**

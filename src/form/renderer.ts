@@ -484,7 +484,7 @@ export function renderCompleteScreen(
 // Failed Screen
 // ============================================
 
-export function renderFailedScreen(error: string): string {
+export function renderFailedScreen(message: string, requestId?: string | null): string {
   return `
     <div class="ats-failed-screen">
       <div class="ats-failed-icon-circle">
@@ -494,11 +494,52 @@ export function renderFailedScreen(error: string): string {
         Something went wrong
       </div>
       <div class="ats-loading-text ats-mb-lg">
-        ${escapeHtml(error)}
+        ${escapeHtml(message)}
       </div>
+      ${requestId ? `
+        <div class="ats-request-id ats-mb-lg">
+          <span class="ats-request-id-label">Error ID:</span>
+          <code class="ats-request-id-value">${escapeHtml(requestId)}</code>
+          <button type="button" class="ats-btn ats-btn-sm ats-btn-outline" data-action="copy-request-id" title="Copy error ID">
+            ${ICONS.copy}
+          </button>
+        </div>
+      ` : ''}
       <button type="button" class="ats-btn ats-btn-primary" id="retry-btn" data-action="retry">
         Retry
       </button>
+    </div>
+  `;
+}
+
+// ============================================
+// Disabled Screen
+// ============================================
+
+export function renderDisabledScreen(message: string, requestId?: string | null): string {
+  return `
+    <div class="ats-failed-screen">
+      <div class="ats-failed-icon-circle" style="border-color: var(--ats-warning, #f59e0b);">
+        ${ICONS.alertTriangle}
+      </div>
+      <div class="ats-section-title ats-section-title-centered">
+        Widget Unavailable
+      </div>
+      <div class="ats-loading-text ats-mb-lg">
+        ${escapeHtml(message)}
+      </div>
+      ${requestId ? `
+        <div class="ats-request-id ats-mb-lg">
+          <span class="ats-request-id-label">Error ID:</span>
+          <code class="ats-request-id-value">${escapeHtml(requestId)}</code>
+          <button type="button" class="ats-btn ats-btn-sm ats-btn-outline" data-action="copy-request-id" title="Copy error ID">
+            ${ICONS.copy}
+          </button>
+        </div>
+      ` : ''}
+      <div class="ats-loading-text">
+        Contact your administrator for assistance.
+      </div>
     </div>
   `;
 }
