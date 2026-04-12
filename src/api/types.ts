@@ -3,7 +3,7 @@
 // ============================================
 
 /** UI screen the component is currently displaying. */
-export type Screen = 'FORM' | 'UPLOAD' | 'CONFIRMING' | 'TRACKING' | 'COMPLETE' | 'FAILED';
+export type Screen = 'FORM' | 'UPLOAD' | 'CONFIRMING' | 'TRACKING' | 'COMPLETE' | 'FAILED' | 'DISABLED';
 
 /** Operating mode of the component: register a new work or update an existing one. */
 export type Mode = 'register' | 'update';
@@ -137,7 +137,7 @@ export interface ConfirmVersionResponse {
 // ============================================
 
 /** Discriminator for WebSocket message types. */
-export type WsMessageType = 'connected' | 'update' | 'error' | 'not_found';
+export type WsMessageType = 'connected' | 'update' | 'error';
 
 /** Extra details attached to a tracking step, present on completion or failure. */
 export interface WsStepDetails {
@@ -172,8 +172,8 @@ export interface WsMessage {
   details?: WsStepDetails;
   /** ISO timestamp of the message. */
   timestamp?: string;
-  /** Informational or error message text. */
-  message?: string;
+  /** Structured error body, present when `type` is `'error'`. */
+  error?: ApiErrorBody;
 }
 
 /** Response from the polling endpoint `GET /v1/transactions/{id}/status`. */
@@ -310,63 +310,17 @@ export interface DownloadCertificateResponse {
 // Error Handling
 // ============================================
 
-/** Machine-readable error codes returned by the ATS API. */
-export enum ApiErrorCode {
-  /** The JWT bearer token has expired; the consumer should refresh and retry. */
-  TOKEN_EXPIRED = 'TOKEN_EXPIRED',
-  /** The `X-Site-Key` header is missing or invalid. */
-  INVALID_SITE_KEY = 'INVALID_SITE_KEY',
-  /** The authenticated user is not authorized for this resource. */
-  FORBIDDEN = 'FORBIDDEN',
-  /** The requested resource does not exist. */
-  NOT_FOUND = 'NOT_FOUND',
-  /** A conflicting resource already exists (e.g. duplicate registration). */
-  CONFLICT = 'CONFLICT',
-  /** Too many requests — the client should back off and retry. */
-  RATE_LIMITED = 'RATE_LIMITED',
-  /** The request payload failed validation (400 / 413 / 422). */
-  BAD_REQUEST = 'BAD_REQUEST',
-  /** An unexpected server error occurred (5xx). */
-  SERVER_ERROR = 'SERVER_ERROR',
-  /** A network-level failure prevented the request from completing. */
-  NETWORK_ERROR = 'NETWORK_ERROR',
-  /** The file upload to S3 failed. */
-  UPLOAD_ERROR = 'UPLOAD_ERROR',
-  /** An error that doesn't map to any known category. */
-  UNKNOWN_ERROR = 'UNKNOWN_ERROR',
+/** Structured error body from the unified backend envelope. */
+export interface ApiErrorBody {
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+  request_id: string;
 }
 
-/** Structured API error with a machine-readable code and optional HTTP status. */
-export class AtsApiException extends Error {
-  readonly code: ApiErrorCode;
-  readonly httpStatus?: number;
-  readonly details?: unknown;
-
-  /**
-   * @param message - Human-readable error description.
-   * @param code - Machine-readable error code.
-   * @param httpStatus - HTTP status that triggered the error, if applicable.
-   * @param details - Arbitrary additional context (e.g. the original error).
-   */
-  constructor(message: string, code: ApiErrorCode, httpStatus?: number, details?: unknown) {
-    super(message);
-    this.name = 'AtsApiException';
-    this.code = code;
-    this.httpStatus = httpStatus;
-    this.details = details;
-  }
-
-  /** Returns `true` if the error was caused by an expired JWT token. */
-  isTokenExpired(): boolean {
-    return this.code === ApiErrorCode.TOKEN_EXPIRED;
-  }
-
-  /** Returns `true` if the request can be safely retried (network, server, or rate-limit errors). */
-  isRetryable(): boolean {
-    return [
-      ApiErrorCode.NETWORK_ERROR,
-      ApiErrorCode.SERVER_ERROR,
-      ApiErrorCode.RATE_LIMITED,
-    ].includes(this.code);
-  }
-}
+/** Discriminated union for all widget errors. */
+export type WidgetError =
+  | { kind: 'api'; error: ApiErrorBody; httpStatus: number }
+  | { kind: 'network'; message: string }
+  | { kind: 'upload'; message: string; httpStatus?: number }
+  | { kind: 'malformed'; status: number; body: string };
