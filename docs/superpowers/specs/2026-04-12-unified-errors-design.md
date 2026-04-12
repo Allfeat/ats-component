@@ -91,11 +91,13 @@ async function apiFetch<T>(
 }
 ```
 
+Error response parsing is extracted into a shared `parseErrorResponse(response: Response): Promise<never>` helper. Both `apiFetch` (authenticated) and `fetchStats` (unauthenticated, plain `fetch`) call this helper on non-2xx responses. This avoids duplicating envelope parsing logic.
+
 Key changes:
 - `onTokenExpired` callback parameter removed from all API functions
 - Token handling moves to the component-level global interceptor
 - All API functions become thin wrappers over `apiFetch<T>`
-- `fetchStats` (unauthenticated) uses the same error envelope parsing
+- `fetchStats` (unauthenticated) uses `parseErrorResponse` for consistent error parsing without auth headers
 
 ## 5. Global Error Interceptor
 
@@ -180,7 +182,9 @@ error: {
 - Update `type: 'error'` handling: parse `msg.error` as `ApiErrorBody` (with `code`, `message`, `details`, `request_id`)
 - `WsMessageType` changes from `'connected' | 'update' | 'error' | 'not_found'` to `'connected' | 'update' | 'error'`
 - `WsMessage` interface updated: `error` field replaces flat `message` field for error-type messages
-- On WS error, construct `WidgetError` with `kind: "api"` and pass to error callback
+- Add an `onError(error: WidgetError)` callback parameter to `subscribeToTransaction` (currently missing — only has `onProgress`, `onComplete`, `onDisconnect`)
+- On WS error message, construct `WidgetError` with `kind: "api"` and call `onError`
+- The component passes `(error) => this.handleError(error, "tracking")` as `onError`
 
 ## 9. Event Payloads (Breaking Change)
 
