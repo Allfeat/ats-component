@@ -18,9 +18,9 @@ All events are dispatched as [`CustomEvent`](https://developer.mozilla.org/en-US
 | [`allfeat:confirmed`](#allfeatconfirmed) | `{ transactionId }` | Confirmation |
 | [`allfeat:step`](#allfeatstep) | `{ step, progress, description? }` | Tracking |
 | [`allfeat:complete`](#allfeatcomplete) | `{ atsId, txHash, blockNumber, explorerUrl, accessCode? }` | Done |
-| [`allfeat:failed`](#allfeatfailed) | `{ error, stage?, code? }` | Error |
+| [`allfeat:failed`](#allfeatfailed) | `{ code, message, requestId, details? }` | Error |
 | [`allfeat:token-expired`](#allfeattoken-expired) | `{ pendingAction }` | Auth |
-| [`allfeat:error`](#allfeaterror) | `{ stage, error, code?, details? }` | Error |
+| [`allfeat:error`](#allfeaterror) | `{ code, message, requestId, stage, details? }` | Error |
 
 ---
 
@@ -146,13 +146,14 @@ interface CompleteDetail {
 
 ## `allfeat:failed`
 
-Fired on critical errors that stop the operation.
+Fired on critical errors that stop the operation. The widget shows either a FAILED screen (with retry) or a DISABLED screen (no retry, for configuration errors).
 
 ```typescript
 interface FailedDetail {
-  error: string;    // Human-readable error message
-  stage?: string;   // Stage where the error occurred
-  code?: string;    // Machine-readable error code
+  code: string;                       // Dotted error code (e.g. "session.origin_not_allowed")
+  message: string;                    // User-facing error message
+  requestId: string | null;           // Backend request ID (null for client-side errors)
+  details?: Record<string, unknown>;  // Additional context from backend
 }
 ```
 
@@ -178,10 +179,11 @@ Fired for non-fatal, recoverable errors.
 
 ```typescript
 interface ErrorDetail {
-  stage: string;
-  error: string;
-  code?: string;
-  details?: unknown;
+  code: string;                       // Dotted error code
+  message: string;                    // Human-readable error message
+  requestId: string | null;           // Backend request ID (null for client-side errors)
+  stage: string;                      // Pipeline stage (e.g. "submit", "upload", "tracking")
+  details?: Record<string, unknown>;  // Additional context
 }
 ```
 

@@ -1,6 +1,6 @@
 ---
 title: Error Handling
-description: Handle ATS Widget errors gracefully — error events, error codes, built-in retry behavior, and recovery patterns.
+description: Handle ATS Widget errors gracefully — structured error events, error codes, built-in retry behavior, and recovery patterns.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -11,17 +11,17 @@ The widget handles most errors internally and displays user-friendly messages. F
 
 ### `allfeat:failed` — Critical Errors
 
-Emitted when the operation cannot continue. The widget shows an error screen.
+Emitted when the operation cannot continue. The widget shows an error screen (FAILED or DISABLED).
 
 ```javascript
 widget.addEventListener('allfeat:failed', (e) => {
-  const { error, stage, code } = e.detail;
+  const { code, message, requestId, details } = e.detail;
 
-  console.error(`[${stage}] ${error} (${code})`);
+  console.error(`[${code}] ${message} (${requestId})`);
 
-  // Example: redirect on permission error
-  if (code === 'FORBIDDEN') {
-    window.location.href = '/access-denied';
+  // Example: redirect on configuration error
+  if (code === 'session.origin_not_allowed') {
+    showMessage('This website is not authorized to use the widget.');
   }
 });
 ```
@@ -32,11 +32,13 @@ Emitted for recoverable errors. The widget continues operating.
 
 ```javascript
 widget.addEventListener('allfeat:error', (e) => {
-  // Log for monitoring, no user action needed
+  const { code, message, requestId, stage } = e.detail;
+
   sendToMonitoring({
-    stage: e.detail.stage,
-    error: e.detail.error,
-    code: e.detail.code,
+    code,
+    message,
+    requestId,
+    stage,
   });
 });
 ```
@@ -45,29 +47,31 @@ widget.addEventListener('allfeat:error', (e) => {
 
 See [Authentication](/guides/authentication/#automatic-token-renewal) for the full token refresh flow.
 
-## Error Codes
+## Error Categories
 
-| Code | HTTP | Description |
-|------|------|-------------|
-| `TOKEN_EXPIRED` | 401 | JWT token has expired |
-| `INVALID_SITE_KEY` | 401 | The `site-key` attribute is missing or doesn't match the token |
-| `FORBIDDEN` | 403 | Token doesn't have permission for this action |
-| `NOT_FOUND` | 404 | Resource not found (e.g., invalid access code) |
-| `CONFLICT` | 409 | Duplicate or conflicting operation |
-| `RATE_LIMITED` | 429 | Too many requests |
-| `BAD_REQUEST` | 400 | Invalid request data |
-| `SERVER_ERROR` | 5xx | Allfeat API server error |
-| `NETWORK_ERROR` | — | Network connectivity issue |
-| `UPLOAD_ERROR` | — | File upload to S3 failed |
-| `UNKNOWN_ERROR` | — | Unexpected error |
+| Category | Example Codes | Widget Behavior |
+|----------|---------------|----------------|
+| **Auth / Session** | `session.invalid_token`, `common.auth.expired` | Triggers token refresh flow |
+| **Configuration** | `session.key_inactive`, `session.origin_not_allowed`, `organization.inactive` | DISABLED screen (no retry button) |
+| **Service Unavailable** | `common.service_unavailable`, `transaction.store_unavailable` | FAILED screen with retry |
+| **Rate Limited** | `common.rate_limited`, `session.rate_limited` | FAILED screen with message |
+| **Other API Errors** | `registration.duplicate_title`, `work.not_found` | FAILED screen with localized message |
+| **Client Errors** | `widget.network_error`, `widget.upload_error` | FAILED screen, no request ID |
 
 <Aside type="note">
-See the full [Error Codes Reference](/reference/error-codes/) for detailed descriptions and recommended actions.
+See the full [Error Codes Reference](/reference/error-codes/) for every error code, its user-facing message, and recommended integrator action.
 </Aside>
 
-## Retry Behavior
+## Request ID
 
-The widget has built-in retry logic for transient failures:
+Every API error includes a `request_id` (e.g., `req_01HXYZ8G7K3M9Q2F4N5P6R7S8T`). This ID is:
+- Shown on terminal screens (FAILED, DISABLED) with a copy button
+- Included in `allfeat:failed` and `allfeat:error` event payloads as `requestId`
+- Useful for support tickets — it correlates to server-side logs
+
+Client-side errors (`widget.*` codes) do not have a request ID.
+
+## Retry Behavior
 
 | Scenario | Behavior |
 |----------|----------|
@@ -75,7 +79,8 @@ The widget has built-in retry logic for transient failures:
 | **Token expiry** | Pauses and waits for a new token (60-second timeout) |
 | **Rate limiting (429)** | Up to 2 retries with backoff (1s, 2s, or `Retry-After` header) |
 | **Transaction polling** | Polls every 3s with a 120-second timeout |
-| **Network errors** | Displayed to the user with an error screen |
+| **Configuration errors** | Not retryable — DISABLED screen without retry button |
+| **Network errors** | Displayed to the user with a FAILED screen (retry button) |
 
 ## Resetting After an Error
 
@@ -83,7 +88,6 @@ Call `widget.reset()` to clear the error state and return to the form:
 
 ```javascript
 widget.addEventListener('allfeat:failed', (e) => {
-  // Show a "Try again" button
   retryButton.onclick = () => widget.reset();
 });
 ```
