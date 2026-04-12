@@ -13,15 +13,14 @@ import {
   subscribeToTransaction,
   pollTransactionStatus,
 } from './api/client';
-import {
-  ApiErrorCode,
-  AtsApiException,
+import type {
+  WidgetError,
   CreatorRequest,
   AccessWorkResponse,
   WsStepDetails,
-  TRACKING_PROGRESS,
 } from './api/types';
 import type { Mode, Network, Screen } from './api/types';
+import { TRACKING_PROGRESS } from './api/types';
 import {
   ComponentState,
   FormSubStep,
@@ -41,11 +40,13 @@ import {
   renderTrackingScreen,
   renderCompleteScreen,
   renderFailedScreen,
+  renderDisabledScreen,
   renderTokenExpiredOverlay,
   renderAccessCodeStep,
   getFormSteps,
 } from './form/renderer';
 import { formatFileSize } from './utils/helpers';
+import type { ErrorDetail } from './utils/events';
 import {
   dispatchReady,
   dispatchUploadStart,
@@ -58,6 +59,7 @@ import {
   dispatchTokenExpired,
   dispatchError,
 } from './utils/events';
+import { getErrorMessage } from './errors/messages';
 import { darkenColor, lightenColor } from './utils/colors';
 import {
   DEFAULT_PRIMARY_COLOR,
@@ -87,7 +89,7 @@ export class AllfeatRegister extends HTMLElement {
   private wsCleanup: WebSocket | null = null;
   private pollingCleanup: (() => void) | null = null;
   private tokenExpiryTimeout: ReturnType<typeof setTimeout> | null = null;
-  private pendingRetry: (() => Promise<void>) | null = null;
+  private pendingStage: string | null = null;
   private _maxFileSize: number = DEFAULT_MAX_FILE_SIZE_BYTES;
 
   constructor() {
@@ -180,16 +182,21 @@ export class AllfeatRegister extends HTMLElement {
 
     switch (name) {
       case 'token':
-        if (newValue && this.state.tokenExpiredPending && this.pendingRetry) {
-          // Token refreshed — execute pending retry
+        if (newValue && this.state.tokenExpiredPending) {
           this.state.tokenExpiredPending = false;
-          const retry = this.pendingRetry;
-          this.pendingRetry = null;
+          const stage = this.pendingStage;
+          this.pendingStage = null;
           if (this.tokenExpiryTimeout) {
             clearTimeout(this.tokenExpiryTimeout);
             this.tokenExpiryTimeout = null;
           }
-          retry();
+          if (stage === 'download') {
+            this.handleDownload();
+          } else if (stage === 'access_code') {
+            this.handleNext();
+          } else {
+            this.handleSubmit();
+          }
         } else {
           this.render();
         }
@@ -238,7 +245,6 @@ export class AllfeatRegister extends HTMLElement {
       this.state.formSubStep = 'access_code';
     }
     this.render();
-    dispatchTokenExpired(this, { pendingAction: 'reset' });
   }
 
   getState(): { screen: Screen; jobId?: string; transactionId?: string; atsId?: number | null; accessCode?: string } {
@@ -280,20 +286,140 @@ export class AllfeatRegister extends HTMLElement {
   // Token Expired Handling
   // ============================================
 
-  private handleTokenExpired(pendingAction: string, retryFn: () => Promise<void>): void {
+  private handleTokenExpired(stage: string): void {
     this.state.tokenExpiredPending = true;
-    this.pendingRetry = retryFn;
+    this.pendingStage = stage;
     this.render();
 
-    dispatchTokenExpired(this, { pendingAction });
+    dispatchTokenExpired(this, { pendingAction: this.pendingStage });
 
     this.tokenExpiryTimeout = setTimeout(() => {
       if (this.state.tokenExpiredPending) {
         this.state.tokenExpiredPending = false;
-        this.pendingRetry = null;
-        this.transitionToFailed('Session expired. Please try again.');
+        this.pendingStage = null;
+        this.transitionToFailed('Session expired. Please try again.', null, null);
       }
     }, TOKEN_EXPIRY_TIMEOUT_MS);
+  }
+
+  // ============================================
+  // Global Error Interceptor
+  // ============================================
+
+  private handleError(error: WidgetError, stage: string): void {
+    // 1. Always log API errors
+    if (error.kind === 'api') {
+      console.error(
+        `[Allfeat Widget] ${error.error.code} (${error.error.request_id}): ${error.error.message}`,
+      );
+    }
+
+    // 2. Emit allfeat:error for observability
+    const errorDetail = this.buildErrorDetail(error, stage);
+    dispatchError(this, errorDetail);
+
+    // 3. Route by error kind and code
+    if (error.kind === 'api') {
+      const code = error.error.code;
+
+      // Auth/session codes → token refresh
+      const authCodes = [
+        'session.invalid_token',
+        'common.auth.missing_token',
+        'common.auth.expired',
+        'common.auth.invalid_token',
+      ];
+      if (authCodes.includes(code)) {
+        this.handleTokenExpired(stage);
+        return;
+      }
+
+      // Configuration codes → DISABLED screen (no retry)
+      const configCodes = [
+        'session.key_inactive',
+        'session.widget_not_enabled',
+        'session.origin_not_allowed',
+        'organization.not_found',
+        'organization.inactive',
+        'organization.no_integration',
+        'common.auth.invalid_api_key',
+      ];
+      if (configCodes.includes(code)) {
+        const message = getErrorMessage(code, error.error.details);
+        this.transitionToDisabled(message, error.error.request_id, code);
+        return;
+      }
+
+      // Service unavailable → FAILED with retry
+      const unavailableCodes = [
+        'common.service_unavailable',
+        'common.auth.jwks_unavailable',
+        'common.auth.backend_unavailable',
+        'transaction.store_unavailable',
+      ];
+      if (unavailableCodes.includes(code)) {
+        const message = getErrorMessage(code, error.error.details);
+        this.transitionToFailed(message, error.error.request_id, code);
+        return;
+      }
+
+      // Rate limited
+      const rateLimitCodes = ['common.rate_limited', 'session.rate_limited'];
+      if (rateLimitCodes.includes(code)) {
+        const message = getErrorMessage(code, error.error.details);
+        this.transitionToFailed(message, error.error.request_id, code);
+        return;
+      }
+
+      // Everything else: localize via catalog
+      const message = getErrorMessage(code, error.error.details);
+      this.transitionToFailed(message, error.error.request_id, code);
+      return;
+    }
+
+    // Non-API errors
+    switch (error.kind) {
+      case 'network':
+        this.transitionToFailed(error.message, null, 'widget.network_error');
+        break;
+      case 'upload':
+        this.transitionToFailed(error.message, null, 'widget.upload_error');
+        break;
+      case 'malformed':
+        this.transitionToFailed(
+          'The server returned an unexpected response. Please try again.',
+          null,
+          'widget.malformed_response',
+        );
+        break;
+    }
+  }
+
+  private buildErrorDetail(error: WidgetError, stage: string): ErrorDetail {
+    if (error.kind === 'api') {
+      return {
+        code: error.error.code,
+        message: error.error.message,
+        requestId: error.error.request_id,
+        stage,
+        details: error.error.details,
+      };
+    }
+
+    const syntheticCodeMap: Record<string, string> = {
+      network: 'widget.network_error',
+      upload: 'widget.upload_error',
+      malformed: 'widget.malformed_response',
+    };
+
+    return {
+      code: syntheticCodeMap[error.kind],
+      message: error.kind === 'malformed'
+        ? `Unexpected response: HTTP ${error.status}`
+        : error.message,
+      requestId: null,
+      stage,
+    };
   }
 
   // ============================================
@@ -305,12 +431,28 @@ export class AllfeatRegister extends HTMLElement {
     this.render();
   }
 
-  private transitionToFailed(error: string): void {
+  private transitionToFailed(message: string, requestId: string | null = null, code: string | null = null): void {
     this.state.screen = 'FAILED';
-    this.state.error = error;
+    this.state.error = { message, requestId, code };
     this.render();
 
-    dispatchFailed(this, { error, stage: this.state.screen });
+    dispatchFailed(this, {
+      code: code || 'widget.unknown_error',
+      message,
+      requestId,
+    });
+  }
+
+  private transitionToDisabled(message: string, requestId: string | null = null, code: string | null = null): void {
+    this.state.screen = 'DISABLED';
+    this.state.error = { message, requestId, code };
+    this.render();
+
+    dispatchFailed(this, {
+      code: code || 'widget.configuration_error',
+      message,
+      requestId,
+    });
   }
 
   // ============================================
@@ -385,7 +527,16 @@ export class AllfeatRegister extends HTMLElement {
         }
         break;
       case 'FAILED':
-        content = renderFailedScreen(this.state.error || 'An unknown error occurred');
+        content = renderFailedScreen(
+          this.state.error?.message || 'An unknown error occurred',
+          this.state.error?.requestId,
+        );
+        break;
+      case 'DISABLED':
+        content = renderDisabledScreen(
+          this.state.error?.message || 'Widget unavailable',
+          this.state.error?.requestId,
+        );
         break;
     }
 
@@ -460,6 +611,19 @@ export class AllfeatRegister extends HTMLElement {
           case 'retry':
             this.handleRetry();
             return;
+          case 'copy-request-id': {
+            const reqId = this.state.error?.requestId;
+            if (reqId) {
+              navigator.clipboard.writeText(reqId).then(() => {
+                const btn = this.shadow.querySelector('[data-action="copy-request-id"]');
+                if (btn) {
+                  btn.textContent = 'Copied!';
+                  setTimeout(() => this.render(), 1500);
+                }
+              }).catch(() => {});
+            }
+            return;
+          }
           case 'remove-file':
             e.stopPropagation();
             this.state.formState.file = null;
@@ -625,16 +789,14 @@ export class AllfeatRegister extends HTMLElement {
   private async handleNext(): Promise<void> {
     if (!this.validateCurrentStep()) return;
 
-    // Update mode: verify access code against API before advancing
     if (this.state.formSubStep === 'access_code' && this.mode === 'update') {
       const accessCode = this.state.formState.accessCode.trim();
-      const onTokenExpired = () => this.handleTokenExpired('update', () => this.handleNext());
 
       this.state.submitting = true;
       this.render();
 
       try {
-        const result = await fetchAccessWork(this.atsUrl, this.token, this.siteKey, accessCode, onTokenExpired);
+        const result = await fetchAccessWork(this.atsUrl, this.token, this.siteKey, accessCode);
 
         this.state.accessData = this.mapAccessWorkResponse(result);
 
@@ -652,21 +814,26 @@ export class AllfeatRegister extends HTMLElement {
           }));
         }
 
-        // Now that we know the network, fetch stats for max file size
         this.fetchAndApplyStats(this.atsUrl, result.network);
 
         this.state.submitting = false;
       } catch (error) {
         this.state.submitting = false;
 
-        if (error instanceof AtsApiException && error.isTokenExpired()) {
-          return;
+        // For access code verification, show inline errors for not-found-type errors,
+        // but route config/auth errors through the global interceptor
+        const widgetError = error as WidgetError;
+        if (widgetError.kind === 'api') {
+          const notFoundCodes = ['access_code.not_found', 'work.not_found', 'common.not_found'];
+          if (notFoundCodes.includes(widgetError.error.code)) {
+            this.state.formErrors = { accessCode: getErrorMessage(widgetError.error.code) };
+            this.render();
+            this.scrollToFirstError();
+            return;
+          }
         }
 
-        const errorMessage = error instanceof Error ? error.message : 'Failed to verify access code';
-        this.state.formErrors = { accessCode: errorMessage };
-        this.render();
-        this.scrollToFirstError();
+        this.handleError(widgetError, 'access_code');
         return;
       }
     }
@@ -808,7 +975,7 @@ export class AllfeatRegister extends HTMLElement {
     if (this.state.submitting) return;
 
     if (!this.token) {
-      this.transitionToFailed('No authentication token provided. Please set the token attribute.');
+      this.transitionToFailed('No authentication token provided. Please set the token attribute.', null, null);
       return;
     }
 
@@ -823,25 +990,7 @@ export class AllfeatRegister extends HTMLElement {
         await this.executeUpdateFlow(formState);
       }
     } catch (error) {
-      if (error instanceof AtsApiException && error.isTokenExpired()) {
-        // Already handled by onTokenExpired callback
-        return;
-      }
-
-      if (error instanceof AtsApiException && error.code === ApiErrorCode.RATE_LIMITED) {
-        this.transitionToFailed('Too many requests. Please wait a moment and try again.');
-        return;
-      }
-
-      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-      this.transitionToFailed(errorMessage);
-
-      dispatchError(this, {
-        stage: this.state.screen,
-        error: errorMessage,
-        code: error instanceof AtsApiException ? error.code : undefined,
-        details: error,
-      });
+      this.handleError(error as WidgetError, 'submit');
     } finally {
       this.state.submitting = false;
     }
@@ -880,20 +1029,16 @@ export class AllfeatRegister extends HTMLElement {
   private async executeRegisterFlow(formState: typeof this.state.formState): Promise<void> {
     const file = formState.file;
     if (!file) {
-      this.transitionToFailed('No file selected');
+      this.transitionToFailed('No file selected', null, null);
       return;
     }
 
     const creators = this.mapCreators(formState);
-    const onTokenExpired = () => this.handleTokenExpired('register', () => this.handleSubmit());
 
     // Step 1: Init
     const initResponse = await initWork(
-      this.atsUrl,
-      this.token,
-      this.siteKey,
+      this.atsUrl, this.token, this.siteKey,
       { title: formState.title, creators, filename: file.name, network: this.network },
-      onTokenExpired,
     );
 
     this.state.jobId = initResponse.job_id;
@@ -907,26 +1052,19 @@ export class AllfeatRegister extends HTMLElement {
     this.render();
 
     const prepareResponse = await prepareWork(
-      this.atsUrl,
-      this.token,
-      this.siteKey,
+      this.atsUrl, this.token, this.siteKey,
       { job_id: initResponse.job_id },
-      onTokenExpired,
     );
 
     this.state.workId = prepareResponse.work_id || null;
 
     // Step 4: Confirm
     const confirmResponse = await confirmWork(
-      this.atsUrl,
-      this.token,
-      this.siteKey,
+      this.atsUrl, this.token, this.siteKey,
       { job_id: initResponse.job_id },
-      onTokenExpired,
     );
 
     this.state.transactionId = confirmResponse.transaction_id;
-
     dispatchConfirmed(this, { transactionId: confirmResponse.transaction_id });
 
     // Step 5: Track
@@ -940,7 +1078,6 @@ export class AllfeatRegister extends HTMLElement {
 
   private async executeUpdateFlow(formState: typeof this.state.formState): Promise<void> {
     const creators = this.mapCreators(formState);
-    const onTokenExpired = () => this.handleTokenExpired('update', () => this.handleSubmit());
     const file = formState.file;
     const accessCode = formState.accessCode.trim();
 
@@ -950,7 +1087,6 @@ export class AllfeatRegister extends HTMLElement {
       const initResponse = await initVersionUpload(
         this.atsUrl, this.token, this.siteKey, accessCode,
         { creators, filename: file.name },
-        onTokenExpired,
       );
 
       jobId = initResponse.job_id;
@@ -962,7 +1098,6 @@ export class AllfeatRegister extends HTMLElement {
       const initResponse = await initVersion(
         this.atsUrl, this.token, this.siteKey, accessCode,
         { creators },
-        onTokenExpired,
       );
 
       jobId = initResponse.job_id;
@@ -976,17 +1111,12 @@ export class AllfeatRegister extends HTMLElement {
     await prepareVersion(
       this.atsUrl, this.token, this.siteKey, accessCode,
       { job_id: jobId },
-      onTokenExpired,
     );
 
     // Confirm
     const confirmResponse = await confirmVersion(
-      this.atsUrl,
-      this.token,
-      this.siteKey,
-      accessCode,
+      this.atsUrl, this.token, this.siteKey, accessCode,
       { job_id: jobId },
-      onTokenExpired,
     );
 
     this.state.transactionId = confirmResponse.transaction_id;
@@ -1102,7 +1232,6 @@ export class AllfeatRegister extends HTMLElement {
     return new Promise((resolve, reject) => {
       let resolved = false;
 
-      // Build URLs from ats-url (needed by handleComplete and WS/polling setup)
       const atsUrlObj = new URL(this.atsUrl);
       const wsProtocol = atsUrlObj.protocol === 'https:' ? 'wss:' : 'ws:';
       const baseWsUrl = `${wsProtocol}//${atsUrlObj.host}`;
@@ -1116,7 +1245,7 @@ export class AllfeatRegister extends HTMLElement {
         const atsId = details.ats_id ?? this.state.accessData?.atsId ?? null;
 
         if ((this.mode !== 'update' && atsId == null) || !details.tx_hash || details.block_number === undefined) {
-          this.transitionToFailed('Incomplete transaction data received');
+          this.transitionToFailed('Incomplete transaction data received', null, null);
           reject(new Error('Incomplete transaction data'));
           return;
         }
@@ -1125,7 +1254,6 @@ export class AllfeatRegister extends HTMLElement {
           this.state.workId = details.work_id;
         }
 
-        // access_code may already be in the WS/polling details or confirm response
         const immediateAccessCode = details.access_code || pendingAccessCode;
 
         this.state.completionData = {
@@ -1136,11 +1264,9 @@ export class AllfeatRegister extends HTMLElement {
           accessCode: immediateAccessCode,
         };
 
-        // Show COMPLETE screen immediately
         this.transitionToScreen('COMPLETE');
 
         if (immediateAccessCode) {
-          // Already have the access code — dispatch and resolve
           dispatchComplete(this, {
             atsId,
             txHash: details.tx_hash,
@@ -1150,8 +1276,6 @@ export class AllfeatRegister extends HTMLElement {
           });
           resolve();
         } else if (this.mode === 'register' && statusUrl) {
-          // access_code is generated asynchronously by tx_consumer after Finalized.
-          // Poll the status endpoint until it appears.
           this.pollForAccessCode(baseHttpUrl + statusUrl, details, atsId).then(resolve);
         } else {
           dispatchComplete(this, {
@@ -1164,12 +1288,12 @@ export class AllfeatRegister extends HTMLElement {
         }
       };
 
-      const handleError = (error: string) => {
+      const handlePollingError = (error: WidgetError) => {
         if (resolved) return;
         resolved = true;
         this.cleanupTracking();
-        this.transitionToFailed(error);
-        reject(new Error(error));
+        this.handleError(error, 'tracking');
+        reject(new Error('Polling error'));
       };
 
       const handleProgress = (step: string, progress: number, description: string) => {
@@ -1187,28 +1311,33 @@ export class AllfeatRegister extends HTMLElement {
           baseWsUrl,
           handleProgress,
           handleComplete,
+          (error: WidgetError) => {
+            if (resolved) return;
+            resolved = true;
+            this.cleanupTracking();
+            this.handleError(error, 'tracking');
+            reject(new Error('WebSocket error'));
+          },
           () => {
             this.wsCleanup = null;
-            // Fallback to polling
             this.pollingCleanup = pollTransactionStatus(
               statusUrl,
               baseHttpUrl,
               handleProgress,
               handleComplete,
-              handleError,
+              handlePollingError,
               POLLING_INTERVAL_MS,
               POLLING_TIMEOUT_MS,
             );
           },
         );
       } catch {
-        // Fallback to polling immediately
         this.pollingCleanup = pollTransactionStatus(
           statusUrl,
           baseHttpUrl,
           handleProgress,
           handleComplete,
-          handleError,
+          handlePollingError,
           POLLING_INTERVAL_MS,
           POLLING_TIMEOUT_MS,
         );
@@ -1225,11 +1354,7 @@ export class AllfeatRegister extends HTMLElement {
 
     try {
       const { url } = await downloadCertificate(
-        this.atsUrl,
-        this.token,
-        this.siteKey,
-        this.state.workId,
-        () => this.handleTokenExpired('download', () => this.handleDownload()),
+        this.atsUrl, this.token, this.siteKey, this.state.workId,
       );
 
       const link = document.createElement('a');
@@ -1242,11 +1367,7 @@ export class AllfeatRegister extends HTMLElement {
       link.click();
       document.body.removeChild(link);
     } catch (error) {
-      dispatchError(this, {
-        stage: 'download',
-        error: error instanceof Error ? error.message : 'Failed to download certificate',
-        details: error,
-      });
+      this.handleError(error as WidgetError, 'download');
     }
   }
 }

@@ -51,9 +51,12 @@ export type {
   DownloadCertificateResponse,
 } from './api/types';
 
+export type {
+  ApiErrorBody,
+  WidgetError,
+} from './api/types';
+
 export {
-  AtsApiException,
-  ApiErrorCode,
   getTrackingSteps,
   TRACKING_PROGRESS,
 } from './api/types';
