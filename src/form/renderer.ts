@@ -300,7 +300,7 @@ export function renderReviewStep(state: FormState, mode: Mode, submitting = fals
     <div class="ats-summary">
       <div class="ats-summary-section">
         <div class="ats-summary-label">File</div>
-        <div class="ats-summary-value">${escapeHtml(fileName)}${!state.file && accessData?.assetFilename ? ' <em>(current version)</em>' : ''}</div>
+        <div class="ats-summary-value">${!state.file && accessData?.assetFilename ? `<strong>${escapeHtml(fileName)}</strong> <em>(current version)</em>` : escapeHtml(fileName)}</div>
       </div>
       <div class="ats-summary-section">
         <div class="ats-summary-label">Title</div>
