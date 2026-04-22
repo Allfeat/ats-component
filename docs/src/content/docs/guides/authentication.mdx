@@ -47,7 +47,7 @@ User → Your Frontend → Your Backend → Allfeat API
          const user = await getAuthenticatedUser(req);
          if (!user) return res.status(401).json({ error: 'Unauthorized' });
 
-         const response = await fetch('https://ats.api.allfeat.org/v1/sessions', {
+         const response = await fetch('https://organizations.api.allfeat.org/v1/sessions', {
            method: 'POST',
            headers: {
              'Content-Type': 'application/json',
@@ -73,7 +73,7 @@ User → Your Frontend → Your Backend → Allfeat API
      </TabItem>
      <TabItem label="cURL">
        ```bash
-       curl -X POST https://ats.api.allfeat.org/v1/sessions \
+       curl -X POST https://organizations.api.allfeat.org/v1/sessions \
          -H "Content-Type: application/json" \
          -H "Origin: https://yoursite.com" \
          -d '{

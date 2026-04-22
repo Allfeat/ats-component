@@ -27,7 +27,7 @@ The `<ats-widget>` element is immediately available.
      <TabItem label="Node.js (Express)">
        ```typescript title="backend/routes/ats-token.ts"
        app.post('/api/ats-token', async (req, res) => {
-         const response = await fetch('https://ats.api.allfeat.org/v1/sessions', {
+         const response = await fetch('https://organizations.api.allfeat.org/v1/sessions', {
            method: 'POST',
            headers: {
              'Content-Type': 'application/json',
@@ -52,7 +52,7 @@ The `<ats-widget>` element is immediately available.
      </TabItem>
      <TabItem label="cURL">
        ```bash
-       curl -X POST https://ats.api.allfeat.org/v1/sessions \
+       curl -X POST https://organizations.api.allfeat.org/v1/sessions \
          -H "Content-Type: application/json" \
          -H "Origin: https://yoursite.com" \
          -d '{
