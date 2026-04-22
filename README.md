@@ -8,10 +8,10 @@ A framework-agnostic web component for registering and updating audio works on t
 
 ```html
 <!-- Pinned to major version (recommended for production) -->
-<script src="https://cdn.allfeat.org/widgets/ats/v1/ats-widget.iife.js"></script>
+<script src="https://cdn.allfeat.org/widgets/ats/v2/ats-widget.iife.js"></script>
 
 <!-- Pinned to exact version -->
-<script src="https://cdn.allfeat.org/widgets/ats/1.0.0/ats-widget.iife.js"></script>
+<script src="https://cdn.allfeat.org/widgets/ats/2.0.0/ats-widget.iife.js"></script>
 
 <!-- Latest (always up-to-date, 5min cache) -->
 <script src="https://cdn.allfeat.org/widgets/ats/latest/ats-widget.iife.js"></script>
@@ -36,7 +36,7 @@ import { AllfeatRegister } from 'allfeat-ats-component';
 
 ```html
 <!-- 1. Load the widget -->
-<script src="https://cdn.allfeat.org/widgets/ats/v1/ats-widget.iife.js"></script>
+<script src="https://cdn.allfeat.org/widgets/ats/v2/ats-widget.iife.js"></script>
 
 <!-- 2. Add the widget -->
 <ats-widget
