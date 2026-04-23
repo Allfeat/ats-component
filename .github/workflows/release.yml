@@ -52,7 +52,7 @@ jobs:
 
           for file in ats-widget.iife.js ats-widget.esm.js; do
             if [ -f "dist/$file" ]; then
-              aws s3 cp "dist/$file" "s3://$BUCKET/$VERSION/$file" \
+              aws s3 cp "dist/$file" "s3://$BUCKET/widgets/ats/$VERSION/$file" \
                 --endpoint-url "$R2_ENDPOINT" \
                 --region auto \
                 --content-type "application/javascript" \
@@ -73,7 +73,7 @@ jobs:
 
           for file in ats-widget.iife.js ats-widget.esm.js; do
             if [ -f "dist/$file" ]; then
-              aws s3 cp "dist/$file" "s3://$BUCKET/$MAJOR/$file" \
+              aws s3 cp "dist/$file" "s3://$BUCKET/widgets/ats/$MAJOR/$file" \
                 --endpoint-url "$R2_ENDPOINT" \
                 --region auto \
                 --content-type "application/javascript" \
@@ -93,7 +93,7 @@ jobs:
 
           for file in ats-widget.iife.js ats-widget.esm.js; do
             if [ -f "dist/$file" ]; then
-              aws s3 cp "dist/$file" "s3://$BUCKET/latest/$file" \
+              aws s3 cp "dist/$file" "s3://$BUCKET/widgets/ats/latest/$file" \
                 --endpoint-url "$R2_ENDPOINT" \
                 --region auto \
                 --content-type "application/javascript" \

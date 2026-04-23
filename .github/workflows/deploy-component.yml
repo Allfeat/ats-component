@@ -38,7 +38,7 @@ jobs:
 
           for file in ats-widget.iife.js ats-widget.esm.js; do
             if [ -f "dist/$file" ]; then
-              aws s3 cp "dist/$file" "s3://$BUCKET/dev/$file" \
+              aws s3 cp "dist/$file" "s3://$BUCKET/widgets/ats/dev/$file" \
                 --endpoint-url "$R2_ENDPOINT" \
                 --region auto \
                 --content-type "application/javascript" \
