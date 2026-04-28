@@ -344,14 +344,14 @@
 /* Full-width outline button with primary hover (for Add Creator) */
 .ats-btn-outline-primary {
   background: transparent;
-  color: var(--ats-text);
-  border: 1px solid var(--ats-border);
+  color: var(--ats-primary);
+  border: 1px solid var(--ats-primary);
   width: 100%;
 }
 
 .ats-btn-outline-primary:hover:not(:disabled) {
-  border-color: var(--ats-primary);
-  color: var(--ats-primary);
+  background: var(--ats-primary);
+  color: white;
 }
 
 /* Outline button with destructive hover (for Remove buttons) */
