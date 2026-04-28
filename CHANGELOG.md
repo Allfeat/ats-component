@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.0.1](https://github.com/Allfeat/ats-component/compare/v2.0.0...v2.0.1) (2026-04-28)
+
+### Bug Fixes
+
+* bold original filename on review step when skipping file update ([07eafb3](https://github.com/Allfeat/ats-component/commit/07eafb3d422722e4ac2a06d645247b8af3deecd2)), closes [Allfeat/ATS#109](https://github.com/Allfeat/ATS/issues/109)
+* **ci:** upload CDN bundles under widgets/ats/ prefix ([97b6885](https://github.com/Allfeat/ats-component/commit/97b6885832a3e4d3f5a33e48ecc5c68b86afee86))
+* **docs:** escape MDX expression placeholders in error-codes table ([90d80fc](https://github.com/Allfeat/ats-component/commit/90d80fc628f0a1397c44471147f825c5b25748dc))
+* **styles:** make Add Creator button visible in dark themes ([10a677f](https://github.com/Allfeat/ats-component/commit/10a677f133bcd1247b17c2e2a7d37a0908925201))
+
 ## [2.0.0](https://github.com/Allfeat/ats-component/compare/v1.2.0...v2.0.0) (2026-04-12)
 
 ### ⚠ BREAKING CHANGES
