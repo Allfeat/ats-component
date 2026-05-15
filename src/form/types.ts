@@ -91,7 +91,7 @@ export function createDefaultFormState(): FormState {
 // ============================================
 
 /** Wizard sub-step within the FORM screen. */
-export type FormSubStep = 'file' | 'title' | 'creators' | 'review' | 'access_code';
+export type FormSubStep = 'file' | 'title' | 'creators' | 'review' | 'access_code' | 'work_select';
 
 /** Data available after a successful on-chain registration or update. */
 export interface CompletionData {
@@ -117,6 +117,134 @@ export interface AccessData {
   latestCommitment: string | null;
   createdAt: string | null;
   assetFilename: string | null;
+}
+
+/**
+ * CamelCase representation of a work returned by the user-scoped list endpoint.
+ * Field names mirror the dashboard `WorkSummary` shape (with camelCase conversion).
+ */
+export interface SelectedWork {
+  id: string;
+  /** `-1` if not yet assigned on-chain, matching the dashboard sentinel. */
+  atsId: number;
+  owner: string;
+  latestVersion: number;
+  latestCommitment: string | null;
+  /** ISO timestamp of first registration. */
+  createdAt: string | null;
+  /** ISO timestamp of most recent version registration — used to order the list. Widget-specific. */
+  updatedAt: string | null;
+  title: string;
+  assetFilename: string | null;
+  hasFiles: boolean;
+}
+
+/** Camel-case view of a single on-chain version of a work. */
+export interface WorkVersion {
+  version: number;
+  commitment: string;
+  /** Original filename of this version's asset; `null` when the version has no file. */
+  assetFilename: string | null;
+  registeredAt: string | null;
+  registeredAtBlock: number | null;
+  mediaHash: string | null;
+  merkleRoot: string | null;
+  blockHash: string | null;
+  txHash: string | null;
+  feeCredits: number | null;
+  storageFeeCredits: number | null;
+}
+
+/** Camel-case view of a creator returned by the version-creators endpoint. */
+export interface WorkCreator {
+  fullName: string;
+  email: string | null;
+  roles: string[];
+  ipi: string | null;
+  isni: string | null;
+}
+
+/** Lazy-loaded creators for a single version, mirroring the dashboard's lazy-fetch pattern. */
+export interface VersionCreatorsEntry {
+  status: WorkListStatus;
+  creators: WorkCreator[];
+  error: string | null;
+}
+
+/** State for the version-detail screen (DOWNLOAD_DETAIL). */
+export interface VersionListState {
+  status: WorkListStatus;
+  /** The work whose versions are being displayed; held so the screen can render even before versions load. */
+  work: SelectedWork | null;
+  /** Versions ordered newest-first for display. */
+  versions: WorkVersion[];
+  error: string | null;
+  /** Per-version in-flight download flag, keyed by version number. */
+  downloading: Record<number, 'asset' | 'certificate' | null>;
+  /** Per-version expand state for the creators dropdown, keyed by version number. */
+  creatorsExpanded: Record<number, boolean>;
+  /** Per-version creators cache (lazy-loaded). Keyed by version number. */
+  creatorsByVersion: Record<number, VersionCreatorsEntry>;
+}
+
+/** Creates a fresh, empty VersionListState. */
+export function createDefaultVersionListState(): VersionListState {
+  return {
+    status: 'idle',
+    work: null,
+    versions: [],
+    error: null,
+    downloading: {},
+    creatorsExpanded: {},
+    creatorsByVersion: {},
+  };
+}
+
+/** Loading status for the user-works list. */
+export type WorkListStatus = 'idle' | 'loading' | 'loaded' | 'error';
+
+/** State for the user-works list shared between work-selector (update) and downloads screens. */
+export interface WorkListState {
+  status: WorkListStatus;
+  works: SelectedWork[];
+  /** Current search query (case-insensitive substring on title). */
+  search: string;
+  /** Currently expanded row id, or `null` when none expanded. */
+  expandedId: string | null;
+  /** Currently selected row id. Picked up by the auto-advance handler. */
+  selectedId: string | null;
+  /** Pagination cursor returned by the API; `null` if none / exhausted. */
+  endCursor: string | null;
+  /** Whether more results exist. */
+  hasNextPage: boolean;
+  /** Error message to display, if `status === 'error'`. */
+  error: string | null;
+  /** Per-row in-flight download flag so we can disable buttons independently. */
+  downloading: Record<string, 'asset' | 'certificate' | null>;
+  /** Per-row expand state for the latest-version creators dropdown, keyed by work id. */
+  creatorsExpanded: Record<string, boolean>;
+  /** Per-row creators cache (lazy-loaded for the latest version). Keyed by work id. */
+  creatorsByWork: Record<string, VersionCreatorsEntry>;
+  /** `true` while a chosen work's creators are being fetched for prefill before advancing. */
+  selecting: boolean;
+}
+
+/** Creates a fresh, empty WorkListState. */
+export function createDefaultWorkListState(): WorkListState {
+  return {
+    status: 'idle',
+    works: [],
+    search: '',
+    expandedId: null,
+    selectedId: null,
+    endCursor: null,
+    hasNextPage: false,
+    error: null,
+    downloading: {},
+    creatorsExpanded: {},
+    creatorsByWork: {},
+    selecting: false,
+  };
 }
 
 /** Full internal state machine for the web component. */
@@ -147,6 +275,14 @@ export interface ComponentState {
   // Access mode result
   /** Work details fetched in access mode, `null` until loaded. */
   accessData: AccessData | null;
+
+  // User-scoped works (external-user-id)
+  /** Shared list state for the work-selector (update) and downloads screens. */
+  workList: WorkListState;
+  /** Per-work version-history state for the DOWNLOAD_DETAIL screen. */
+  versionList: VersionListState;
+  /** The work selected from the work-selector list, `null` when none picked. */
+  selectedWork: SelectedWork | null;
 
   // API state
   jobId: string | null;
@@ -187,6 +323,9 @@ export function createDefaultComponentState(): ComponentState {
     trackingProgress: 0,
     completionData: null,
     accessData: null,
+    workList: createDefaultWorkListState(),
+    versionList: createDefaultVersionListState(),
+    selectedWork: null,
     jobId: null,
     workId: null,
     transactionId: null,

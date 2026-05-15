@@ -12,12 +12,14 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     // Server-only (private) — overridden by NUXT_ORGANIZATIONS_URL, NUXT_SECRET_KEY
-    organizationsUrl: 'http://localhost:3008',
+    // Defaults target the docker-compose dev stack (host ports 13xxx).
+    // For native cargo builds of the platform, override via NUXT_ORGANIZATIONS_URL=http://localhost:3008
+    organizationsUrl: 'http://localhost:13008',
     secretKey: 'csk_0000000000000000000000000000000000000000000000000000000000000000',
 
     // Public (exposed to client) — overridden by NUXT_PUBLIC_ATS_URL, etc.
     public: {
-      atsUrl: 'http://localhost:3002',
+      atsUrl: 'http://localhost:13002',
       siteKey: 'cpk_0000000000000000000000000000000000000000000000000000000000000000',
       network: 'mainnet',
     },

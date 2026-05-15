@@ -3,20 +3,28 @@ import type {
   WidgetError,
   ConfirmWorkResponse,
   ConfirmVersionResponse,
+  ConfirmWorkVersionResponse,
   CreatorRequest,
+  DownloadAssetResponse,
   DownloadCertificateResponse,
   InitWorkResponse,
   InitVersionUploadResponse,
   InitVersionResponse,
+  InitWorkVersionResponse,
+  InitWorkVersionUploadResponse,
+  ListUserWorksResponse,
+  ListWorkCreatorsResponse,
+  ListWorkVersionsResponse,
   PrepareWorkResponse,
   PrepareVersionResponse,
+  PrepareWorkVersionResponse,
   StatsResponse,
   TransactionStatusResponse,
   WsMessage,
   WsStepDetails,
   AccessWorkResponse,
 } from './types';
-import { AUTH_FETCH_MAX_RETRIES } from '../constants';
+import { AUTH_FETCH_MAX_RETRIES, USE_MOCK_USER_WORKS } from '../constants';
 
 // ============================================
 // Helpers
@@ -336,6 +344,227 @@ export async function downloadCertificate(
 ): Promise<DownloadCertificateResponse> {
   const url = buildUrl(atsUrl, `/v1/works/${workId}/download/certificate`);
   return apiFetch<DownloadCertificateResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+// ============================================
+// User-Scoped Works (external-user-id)
+// ============================================
+//
+// All functions below operate on works scoped to an external user id supplied by the host
+// application. The widget's JWT is site-scoped; the external user id picks the user within
+// that site. Each function transparently routes through `./mock.ts` when
+// `USE_MOCK_USER_WORKS` is `true` — Rollup tree-shakes the mock module out of the
+// production bundle when the flag is `false`.
+
+export async function listUserWorks(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  externalUserId: string,
+  opts: { network: string; first?: number; after?: string | null; search?: string | null },
+): Promise<ListUserWorksResponse> {
+  if (USE_MOCK_USER_WORKS) {
+    const { listUserWorksMock } = await import('./mock');
+    return listUserWorksMock(atsUrl, token, siteKey, externalUserId, opts);
+  }
+  const params = new URLSearchParams();
+  params.set('network', opts.network);
+  if (opts.first != null) params.set('first', String(opts.first));
+  if (opts.after) params.set('after', opts.after);
+  if (opts.search) params.set('search', opts.search);
+  const url = buildUrl(
+    atsUrl,
+    `/v1/users/${encodeURIComponent(externalUserId)}/works?${params.toString()}`,
+  );
+  return apiFetch<ListUserWorksResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+/**
+ * Get the version history of a single user-scoped work.
+ *
+ * Mirrors `GET /v1/works/{ats_id}/versions` on the dashboard side, but keyed by the
+ * user-scoped UUID `workId` and bound to an `externalUserId` for tenant isolation.
+ * `network` is a query param like the dashboard's variant.
+ */
+export async function listUserWorkVersions(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  externalUserId: string,
+  workId: string,
+  network: string,
+): Promise<ListWorkVersionsResponse> {
+  if (USE_MOCK_USER_WORKS) {
+    const { listUserWorkVersionsMock } = await import('./mock');
+    return listUserWorkVersionsMock(atsUrl, token, siteKey, externalUserId, workId);
+  }
+  const url = buildUrl(
+    atsUrl,
+    `/v1/users/${encodeURIComponent(externalUserId)}/works/${encodeURIComponent(workId)}/versions?network=${encodeURIComponent(network)}`,
+  );
+  return apiFetch<ListWorkVersionsResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+/**
+ * Get the creators attached to a specific version of a user-scoped work.
+ *
+ * Mirrors `GET /v1/works/{ats_id}/versions/{version}/creators`, keyed by UUID + external user id.
+ */
+export async function listUserWorkVersionCreators(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  externalUserId: string,
+  workId: string,
+  version: number,
+  network: string,
+): Promise<ListWorkCreatorsResponse> {
+  if (USE_MOCK_USER_WORKS) {
+    const { listUserWorkVersionCreatorsMock } = await import('./mock');
+    return listUserWorkVersionCreatorsMock(atsUrl, token, siteKey, externalUserId, workId, version);
+  }
+  const url = buildUrl(
+    atsUrl,
+    `/v1/users/${encodeURIComponent(externalUserId)}/works/${encodeURIComponent(workId)}/versions/${version}/creators?network=${encodeURIComponent(network)}`,
+  );
+  return apiFetch<ListWorkCreatorsResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+/**
+ * Get a presigned URL to download a specific version's audio asset.
+ *
+ * Mirrors the dashboard's `GET /v1/works/{id}/versions/{version}/download/audio` endpoint
+ * (note: the path is `/download/audio` for version-scoped downloads, matching dashboard naming).
+ */
+export async function downloadUserWorkVersionAsset(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  externalUserId: string,
+  workId: string,
+  version: number,
+): Promise<DownloadAssetResponse> {
+  if (USE_MOCK_USER_WORKS) {
+    const { downloadUserWorkVersionAssetMock } = await import('./mock');
+    return downloadUserWorkVersionAssetMock(atsUrl, token, siteKey, externalUserId, workId, version);
+  }
+  const url = buildUrl(
+    atsUrl,
+    `/v1/users/${encodeURIComponent(externalUserId)}/works/${encodeURIComponent(workId)}/versions/${version}/download/audio`,
+  );
+  return apiFetch<DownloadAssetResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+/**
+ * Get a presigned URL to download a specific version's certificate PDF.
+ *
+ * Mirrors `GET /v1/works/{id}/versions/{version}/download/certificate`.
+ */
+export async function downloadUserWorkVersionCertificate(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  externalUserId: string,
+  workId: string,
+  version: number,
+): Promise<DownloadCertificateResponse> {
+  if (USE_MOCK_USER_WORKS) {
+    const { downloadUserWorkVersionCertificateMock } = await import('./mock');
+    return downloadUserWorkVersionCertificateMock(atsUrl, token, siteKey, externalUserId, workId, version);
+  }
+  const url = buildUrl(
+    atsUrl,
+    `/v1/users/${encodeURIComponent(externalUserId)}/works/${encodeURIComponent(workId)}/versions/${version}/download/certificate`,
+  );
+  return apiFetch<DownloadCertificateResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+export async function initUserWorkVersionUpload(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  externalUserId: string,
+  workId: string,
+  data: { creators: CreatorRequest[]; filename: string },
+): Promise<InitWorkVersionUploadResponse> {
+  if (USE_MOCK_USER_WORKS) {
+    const { initUserWorkVersionUploadMock } = await import('./mock');
+    return initUserWorkVersionUploadMock(atsUrl, token, siteKey, externalUserId, workId, data);
+  }
+  const url = buildUrl(
+    atsUrl,
+    `/v1/users/${encodeURIComponent(externalUserId)}/works/${encodeURIComponent(workId)}/versions/init-upload`,
+  );
+  return apiFetch<InitWorkVersionUploadResponse>(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function initUserWorkVersion(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  externalUserId: string,
+  workId: string,
+  data: { creators: CreatorRequest[] },
+): Promise<InitWorkVersionResponse> {
+  if (USE_MOCK_USER_WORKS) {
+    const { initUserWorkVersionMock } = await import('./mock');
+    return initUserWorkVersionMock(atsUrl, token, siteKey, externalUserId, workId, data);
+  }
+  const url = buildUrl(
+    atsUrl,
+    `/v1/users/${encodeURIComponent(externalUserId)}/works/${encodeURIComponent(workId)}/versions/init`,
+  );
+  return apiFetch<InitWorkVersionResponse>(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function prepareUserWorkVersion(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  externalUserId: string,
+  workId: string,
+  data: { job_id: string },
+): Promise<PrepareWorkVersionResponse> {
+  if (USE_MOCK_USER_WORKS) {
+    const { prepareUserWorkVersionMock } = await import('./mock');
+    return prepareUserWorkVersionMock(atsUrl, token, siteKey, externalUserId, workId, data);
+  }
+  const url = buildUrl(
+    atsUrl,
+    `/v1/users/${encodeURIComponent(externalUserId)}/works/${encodeURIComponent(workId)}/versions/prepare`,
+  );
+  return apiFetch<PrepareWorkVersionResponse>(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify({ ...data, passphrase: null }),
+  });
+}
+
+export async function confirmUserWorkVersion(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  externalUserId: string,
+  workId: string,
+  data: { job_id: string },
+): Promise<ConfirmWorkVersionResponse> {
+  if (USE_MOCK_USER_WORKS) {
+    const { confirmUserWorkVersionMock } = await import('./mock');
+    return confirmUserWorkVersionMock(atsUrl, token, siteKey, externalUserId, workId, data);
+  }
+  const url = buildUrl(
+    atsUrl,
+    `/v1/users/${encodeURIComponent(externalUserId)}/works/${encodeURIComponent(workId)}/versions/confirm`,
+  );
+  return apiFetch<ConfirmWorkVersionResponse>(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 // ============================================

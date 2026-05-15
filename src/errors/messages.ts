@@ -35,8 +35,15 @@ const ERROR_MESSAGES: Record<string, string> = {
   // Works & Access
   'work.not_found': 'The requested work was not found.',
   'work.already_registered': 'This work has already been registered.',
+  'work.not_owned_by_user': "You don't have access to this work.",
+  'work.no_asset': 'The asset file is not available for download.',
+  'work.certificate_unavailable': 'The certificate is not yet available for download.',
   'access_code.not_found': 'The access code is invalid or does not exist.',
   'access_code.expired': 'This access code has expired.',
+
+  // User-scoped works (external-user-id)
+  'external_user.not_found': 'No user found for the provided ID.',
+  'version.already_in_progress': 'A previous version update is still in progress.',
 
   // Transactions
   'transaction.not_found': 'Transaction not found.',

@@ -1,20 +1,23 @@
 <script setup lang="ts">
 // --------------- Config state ---------------
 const config = reactive({
-  organizationsUrl: 'http://localhost:3008',
-  siteKey: 'cpk_0000000000000000000000000000000000000000000000000000000000000000',
-  secretKey: 'csk_0000000000000000000000000000000000000000000000000000000000000000',
-  atsUrl: 'http://localhost:3002',
-  network: 'testnet',
-  allowedAtsId: '',
-  mode: 'register' as 'register' | 'update',
-  primaryColor: '#4DB8A8',
-  radius: '8px',
-  font: '',
+  organizationsUrl: "http://localhost:13008",
+  siteKey:
+    "cpk_0000000000000000000000000000000000000000000000000000000000000000",
+  secretKey:
+    "csk_0000000000000000000000000000000000000000000000000000000000000000",
+  atsUrl: "http://localhost:13002",
+  network: "testnet",
+  allowedAtsId: "",
+  mode: "register" as "register" | "update" | "download",
+  externalUserId: "",
+  primaryColor: "#4DB8A8",
+  radius: "8px",
+  font: "",
 });
 
 // --------------- Status bar ---------------
-const statusType = ref<'idle' | 'ok' | 'warn' | 'err'>('idle');
+const statusType = ref<"idle" | "ok" | "warn" | "err">("idle");
 const statusText = ref('Not initialized — click "Initialize" to start');
 
 function setStatus(type: typeof statusType.value, text: string) {
@@ -35,15 +38,15 @@ const events = ref<EventEntry[]>([]);
 let eventCounter = 0;
 
 function logEvent(name: string, data: unknown) {
-  const time = new Date().toLocaleTimeString('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
+  const time = new Date().toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
     fractionalSecondDigits: 3,
   });
-  let sourceClass = '';
-  if (name.startsWith('ats:')) sourceClass = 'source-ats';
-  else if (name.startsWith('allfeat:')) sourceClass = 'source-allfeat';
+  let sourceClass = "";
+  if (name.startsWith("ats:")) sourceClass = "source-ats";
+  else if (name.startsWith("allfeat:")) sourceClass = "source-allfeat";
 
   events.value.unshift({ id: ++eventCounter, name, sourceClass, time, data });
 }
@@ -55,17 +58,17 @@ function clearEvents() {
 
 function syntaxHighlightJSON(obj: unknown): string {
   const json = JSON.stringify(obj, null, 2);
-  if (!json || json === '{}') return '<span class="json-null">{ }</span>';
+  if (!json || json === "{}") return '<span class="json-null">{ }</span>';
   return json.replace(
     /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(\.\d+)?([eE][+-]?\d+)?)/g,
     (match) => {
-      let cls = 'json-number';
+      let cls = "json-number";
       if (/^"/.test(match)) {
-        cls = /:$/.test(match) ? 'json-key' : 'json-string';
+        cls = /:$/.test(match) ? "json-key" : "json-string";
       } else if (/true|false/.test(match)) {
-        cls = 'json-bool';
+        cls = "json-bool";
       } else if (/null/.test(match)) {
-        cls = 'json-null';
+        cls = "json-null";
       }
       return `<span class="${cls}">${match}</span>`;
     },
@@ -74,25 +77,38 @@ function syntaxHighlightJSON(obj: unknown): string {
 
 // --------------- Token management ---------------
 async function requestToken() {
-  const actionType = config.mode === 'update' ? 'update_version' : 'register';
+  // Mock layer handles the download flow without a backend token, so allow demoing it
+  // without requiring the BFF to know about `'download'` yet.
+  if (config.mode === "download") {
+    return {
+      token: "mock-download-token",
+      expires_in: 3600,
+      network: config.network,
+    };
+  }
+  const actionType = config.mode === "update" ? "update_version" : "register";
 
   if (!config.organizationsUrl || !config.secretKey) {
-    throw new Error('Organizations URL and Secret Key are required');
+    throw new Error("Organizations URL and Secret Key are required");
   }
 
   const body: Record<string, unknown> = {
     organizations_url: config.organizationsUrl,
     secret_key: config.secretKey,
     action_type: actionType,
-    allowed_network: config.mode === 'register' ? config.network : null,
+    allowed_network: config.mode === "register" ? config.network : null,
   };
 
-  if (config.mode !== 'register' && config.allowedAtsId) {
+  if (config.mode !== "register" && config.allowedAtsId) {
     body.allowed_ats_id = Number(config.allowedAtsId);
   }
 
-  const res = await $fetch<{ token: string; expires_in: number; network?: string }>('/api/token', {
-    method: 'POST',
+  const res = await $fetch<{
+    token: string;
+    expires_in: number;
+    network?: string;
+  }>("/api/token", {
+    method: "POST",
     body,
   });
 
@@ -103,26 +119,42 @@ async function requestToken() {
 const widgetRef = ref<HTMLElement | null>(null);
 
 async function initializeFlow() {
-  setStatus('warn', 'Requesting token from BFF...');
-  logEvent('ats:token-request', { endpoint: '/api/token' });
+  setStatus("warn", "Requesting token from BFF...");
+  logEvent("ats:token-request", { endpoint: "/api/token" });
 
   try {
     const { token, expires_in, network } = await requestToken();
-    logEvent('ats:token-received', { expires_in, network, tokenPreview: token.substring(0, 30) + '...' });
+    logEvent("ats:token-received", {
+      expires_in,
+      network,
+      tokenPreview: token.substring(0, 30) + "...",
+    });
 
     const widget = widgetRef.value as any;
     if (!widget) return;
 
-    widget.setAttribute('ats-url', config.atsUrl);
-    widget.setAttribute('site-key', config.siteKey);
-    widget.setAttribute('mode', config.mode);
+    widget.setAttribute("ats-url", config.atsUrl);
+    widget.setAttribute("site-key", config.siteKey);
     if (network) {
-      widget.setAttribute('network', network);
+      widget.setAttribute("network", network);
     }
 
-    widget.setToken(token);
+    // External user id is shared by update + download flows; remove when empty so the
+    // widget falls back to the legacy access-code path for `update`.
+    if (config.externalUserId) {
+      widget.setAttribute("external-user-id", config.externalUserId);
+    } else {
+      widget.removeAttribute("external-user-id");
+    }
 
-    setStatus('ok', `Token set (${expires_in}s TTL)${network ? ` — network: ${network}` : ''} — widget ready`);
+    // Set token BEFORE mode so any mode-triggered side effects (listUserWorks) have auth.
+    widget.setToken(token);
+    widget.setAttribute("mode", config.mode);
+
+    setStatus(
+      "ok",
+      `Token set (${expires_in}s TTL)${network ? ` — network: ${network}` : ""} — widget ready`,
+    );
     const configLog: Record<string, string> = {
       atsUrl: config.atsUrl,
       mode: config.mode,
@@ -130,33 +162,44 @@ async function initializeFlow() {
     if (network) {
       configLog.network = network;
     }
-    logEvent('ats:widget-configured', configLog);
+    if (config.externalUserId) {
+      configLog.externalUserId = config.externalUserId;
+    }
+    logEvent("ats:widget-configured", configLog);
   } catch (err: any) {
-    const msg = err?.data?.message || err?.data?.statusMessage || err?.message || String(err);
-    setStatus('err', 'Failed to get token: ' + msg);
-    logEvent('ats:token-error', { error: msg });
+    const msg =
+      err?.data?.message ||
+      err?.data?.statusMessage ||
+      err?.message ||
+      String(err);
+    setStatus("err", "Failed to get token: " + msg);
+    logEvent("ats:token-error", { error: msg });
   }
 }
 
 async function refreshToken() {
-  setStatus('warn', 'Manual token refresh...');
-  logEvent('ats:manual-refresh', {});
+  setStatus("warn", "Manual token refresh...");
+  logEvent("ats:manual-refresh", {});
 
   try {
     const { token, expires_in } = await requestToken();
     (widgetRef.value as any)?.setToken(token);
-    setStatus('ok', `Token refreshed (${expires_in}s TTL)`);
-    logEvent('ats:token-refreshed', { expires_in });
+    setStatus("ok", `Token refreshed (${expires_in}s TTL)`);
+    logEvent("ats:token-refreshed", { expires_in });
   } catch (err: any) {
-    const msg = err?.data?.message || err?.data?.statusMessage || err?.message || String(err);
-    setStatus('err', 'Refresh failed: ' + msg);
+    const msg =
+      err?.data?.message ||
+      err?.data?.statusMessage ||
+      err?.message ||
+      String(err);
+    setStatus("err", "Refresh failed: " + msg);
   }
 }
 
 function resetWidget() {
   (widgetRef.value as any)?.reset();
-  setStatus('idle', 'Widget reset — click "Initialize" to start again');
-  logEvent('ats:widget-reset', {});
+  setStatus("idle", 'Widget reset — click "Initialize" to start again');
+  logEvent("ats:widget-reset", {});
 }
 
 // --------------- Customization ---------------
@@ -164,13 +207,16 @@ function applyCustomization() {
   const widget = widgetRef.value;
   if (!widget) return;
 
-  widget.style.setProperty('--ats-primary', config.primaryColor);
-  widget.style.setProperty('--ats-radius', config.radius);
-  widget.style.setProperty('--ats-radius-lg', `${parseInt(config.radius) + 4}px`);
+  widget.style.setProperty("--ats-primary", config.primaryColor);
+  widget.style.setProperty("--ats-radius", config.radius);
+  widget.style.setProperty(
+    "--ats-radius-lg",
+    `${parseInt(config.radius) + 4}px`,
+  );
   if (config.font) {
-    widget.style.setProperty('--ats-font-family', config.font);
+    widget.style.setProperty("--ats-font-family", config.font);
   } else {
-    widget.style.removeProperty('--ats-font-family');
+    widget.style.removeProperty("--ats-font-family");
   }
 }
 
@@ -191,37 +237,54 @@ onMounted(() => {
   if (!widget) return;
 
   // Token expired or reset → auto-refresh via BFF
-  widget.addEventListener('allfeat:token-expired', async (e: Event) => {
+  widget.addEventListener("allfeat:token-expired", async (e: Event) => {
     const detail = (e as CustomEvent).detail;
-    const isReset = detail?.pendingAction === 'reset';
-    logEvent('allfeat:token-expired', detail);
-    setStatus('warn', isReset ? 'New session — fetching token...' : 'Token expired — refreshing...');
+    const isReset = detail?.pendingAction === "reset";
+    logEvent("allfeat:token-expired", detail);
+    setStatus(
+      "warn",
+      isReset
+        ? "New session — fetching token..."
+        : "Token expired — refreshing...",
+    );
 
     try {
       const { token, expires_in } = await requestToken();
-      logEvent('ats:token-refreshed', { expires_in });
+      logEvent("ats:token-refreshed", { expires_in });
       (widget as any).setToken(token);
-      setStatus('ok', isReset
-        ? `Token ready (${expires_in}s TTL) — widget reset`
-        : `Token refreshed (${expires_in}s TTL) — retry in progress`);
+      setStatus(
+        "ok",
+        isReset
+          ? `Token ready (${expires_in}s TTL) — widget reset`
+          : `Token refreshed (${expires_in}s TTL) — retry in progress`,
+      );
     } catch (err: any) {
-      const msg = err?.data?.message || err?.data?.statusMessage || err?.message || String(err);
-      setStatus('err', 'Token refresh failed: ' + msg);
-      logEvent('ats:refresh-error', { error: msg });
+      const msg =
+        err?.data?.message ||
+        err?.data?.statusMessage ||
+        err?.message ||
+        String(err);
+      setStatus("err", "Token refresh failed: " + msg);
+      logEvent("ats:refresh-error", { error: msg });
     }
   });
 
   // Listen to all widget events
   const widgetEvents = [
-    'allfeat:ready',
-    'allfeat:upload-start',
-    'allfeat:upload-progress',
-    'allfeat:upload-complete',
-    'allfeat:confirmed',
-    'allfeat:step',
-    'allfeat:complete',
-    'allfeat:failed',
-    'allfeat:error',
+    "allfeat:ready",
+    "allfeat:upload-start",
+    "allfeat:upload-progress",
+    "allfeat:upload-complete",
+    "allfeat:confirmed",
+    "allfeat:step",
+    "allfeat:complete",
+    "allfeat:failed",
+    "allfeat:error",
+    "allfeat:mode-changed",
+    "allfeat:work-selected",
+    "allfeat:download-started",
+    "allfeat:download-complete",
+    "allfeat:download-failed",
   ];
 
   widgetEvents.forEach((name) => {
@@ -229,27 +292,30 @@ onMounted(() => {
       const detail = (e as CustomEvent).detail;
       logEvent(name, detail);
 
-      if (name === 'allfeat:complete') {
+      if (name === "allfeat:complete") {
         const parts = [`ATS ID: ${detail.atsId}`];
-        if (detail.accessCode) parts.push(`Access Code: ${detail.accessCode.substring(0, 20)}...`);
-        setStatus('ok', `Complete! ${parts.join(' | ')}`);
+        if (detail.accessCode)
+          parts.push(`Access Code: ${detail.accessCode.substring(0, 20)}...`);
+        setStatus("ok", `Complete! ${parts.join(" | ")}`);
       }
-      if (name === 'allfeat:failed') {
-        setStatus('err', `Failed: ${detail.error}`);
+      if (name === "allfeat:failed") {
+        setStatus("err", `Failed: ${detail.error}`);
       }
     });
   });
 });
 
 // --------------- Tabs ---------------
-const activeTab = ref<'client' | 'backend' | 'custom'>('client');
+const activeTab = ref<"client" | "backend" | "custom">("client");
 </script>
 
 <template>
   <div class="demo-container">
     <div class="demo-header">
       <h1 class="demo-title">ATS Widget</h1>
-      <p class="demo-subtitle">Integration demo &mdash; uses the real ATS API</p>
+      <p class="demo-subtitle">
+        Integration demo &mdash; uses the real ATS API
+      </p>
     </div>
 
     <!-- ============ FLOW DIAGRAM ============ -->
@@ -258,32 +324,32 @@ const activeTab = ref<'client' | 'backend' | 'custom'>('client');
       <div class="flow-steps">
         <div class="flow-step">
           <div class="flow-step-dot backend">1</div>
-          <div class="flow-step-label">Partner backend<br>creates JWT</div>
+          <div class="flow-step-label">Partner backend<br />creates JWT</div>
         </div>
         <div class="flow-arrow">&rarr;</div>
         <div class="flow-step">
           <div class="flow-step-dot client">2</div>
-          <div class="flow-step-label">Client page<br>receives token</div>
+          <div class="flow-step-label">Client page<br />receives token</div>
         </div>
         <div class="flow-arrow">&rarr;</div>
         <div class="flow-step">
           <div class="flow-step-dot client">3</div>
-          <div class="flow-step-label">Sets token<br>on widget</div>
+          <div class="flow-step-label">Sets token<br />on widget</div>
         </div>
         <div class="flow-arrow">&rarr;</div>
         <div class="flow-step">
           <div class="flow-step-dot widget">4</div>
-          <div class="flow-step-label">Widget calls<br>ATS service</div>
+          <div class="flow-step-label">Widget calls<br />ATS service</div>
         </div>
         <div class="flow-arrow">&rarr;</div>
         <div class="flow-step">
           <div class="flow-step-dot widget">5</div>
-          <div class="flow-step-label">On 401: emits<br>token-expired</div>
+          <div class="flow-step-label">On 401: emits<br />token-expired</div>
         </div>
         <div class="flow-arrow">&rarr;</div>
         <div class="flow-step">
           <div class="flow-step-dot client">6</div>
-          <div class="flow-step-label">Client calls<br>setToken()</div>
+          <div class="flow-step-label">Client calls<br />setToken()</div>
         </div>
       </div>
     </div>
@@ -294,21 +360,24 @@ const activeTab = ref<'client' | 'backend' | 'custom'>('client');
 
       <div class="config-grid">
         <div class="config-section">
-          <span class="config-section-label badge badge-backend">Backend (session creation)</span>
+          <span class="config-section-label badge badge-backend"
+            >Backend (session creation)</span
+          >
         </div>
         <div class="config-field full">
           <label>Organizations Service URL</label>
-          <input v-model="config.organizationsUrl" type="text">
+          <input v-model="config.organizationsUrl" type="text" />
         </div>
         <div class="config-field">
           <label>Secret Key</label>
-          <input v-model="config.secretKey" type="text">
+          <input v-model="config.secretKey" type="text" />
         </div>
         <div class="config-field">
           <label>Mode (action_type)</label>
           <select v-model="config.mode">
             <option value="register">register</option>
             <option value="update">update</option>
+            <option value="download">download</option>
           </select>
         </div>
         <div v-show="config.mode === 'register'" class="config-field">
@@ -318,39 +387,57 @@ const activeTab = ref<'client' | 'backend' | 'custom'>('client');
             <option value="mainnet">mainnet</option>
           </select>
         </div>
-        <div v-show="config.mode !== 'register'" class="config-field">
+        <div v-show="config.mode === 'update'" class="config-field">
           <label>ATS ID (allowed_ats_id)</label>
-          <input v-model="config.allowedAtsId" type="number" placeholder="Optional">
+          <input
+            v-model="config.allowedAtsId"
+            type="number"
+            placeholder="Optional"
+          />
+        </div>
+        <div class="config-field full">
+          <label>External User ID (for update + download)</label>
+          <input
+            v-model="config.externalUserId"
+            type="text"
+            placeholder="usr_... (leave empty for legacy access-code update)"
+          />
         </div>
         <div class="config-section">
-          <span class="config-section-label badge badge-client">Client-side (widget)</span>
+          <span class="config-section-label badge badge-client"
+            >Client-side (widget)</span
+          >
         </div>
         <div class="config-field full">
           <label>ATS Service URL</label>
-          <input v-model="config.atsUrl" type="text">
+          <input v-model="config.atsUrl" type="text" />
         </div>
         <div class="config-field">
           <label>Site Key (x-site-key)</label>
-          <input v-model="config.siteKey" type="text">
+          <input v-model="config.siteKey" type="text" />
         </div>
 
         <div class="config-section">
-          <span class="config-section-label badge badge-widget">Customization</span>
+          <span class="config-section-label badge badge-widget"
+            >Customization</span
+          >
         </div>
         <div class="config-field">
           <label>Primary Color</label>
-          <div style="display: flex; gap: 8px; align-items: center;">
+          <div style="display: flex; gap: 8px; align-items: center">
             <input
               v-model="config.primaryColor"
               type="color"
-              style="width: 40px; height: 36px; padding: 2px; cursor: pointer;"
-            >
+              style="width: 40px; height: 36px; padding: 2px; cursor: pointer"
+            />
             <input
               :value="config.primaryColor"
               type="text"
-              style="flex: 1;"
-              @input="syncColorFromHex(($event.target as HTMLInputElement).value)"
-            >
+              style="flex: 1"
+              @input="
+                syncColorFromHex(($event.target as HTMLInputElement).value)
+              "
+            />
           </div>
         </div>
         <div class="config-field">
@@ -369,26 +456,28 @@ const activeTab = ref<'client' | 'backend' | 'custom'>('client');
             <option value="">System Default</option>
             <option value="'Inter', sans-serif">Inter</option>
             <option value="'Georgia', serif">Georgia (Serif)</option>
-            <option value="'Courier New', monospace">Courier New (Monospace)</option>
+            <option value="'Courier New', monospace">
+              Courier New (Monospace)
+            </option>
           </select>
         </div>
         <div class="config-field full">
           <label>Available CSS Variables</label>
           <div class="css-vars-list">
-            <code>--ats-primary</code><br>
-            <code>--ats-primary-hover</code><br>
-            <code>--ats-primary-light</code><br>
-            <code>--ats-text</code><br>
-            <code>--ats-text-secondary</code><br>
-            <code>--ats-background</code><br>
-            <code>--ats-background-secondary</code><br>
-            <code>--ats-border</code><br>
-            <code>--ats-error</code><br>
-            <code>--ats-radius</code><br>
-            <code>--ats-radius-lg</code><br>
-            <code>--ats-font-family</code><br>
-            <code>--ats-shadow</code><br>
-            <code>--ats-transition</code><br>
+            <code>--ats-primary</code><br />
+            <code>--ats-primary-hover</code><br />
+            <code>--ats-primary-light</code><br />
+            <code>--ats-text</code><br />
+            <code>--ats-text-secondary</code><br />
+            <code>--ats-background</code><br />
+            <code>--ats-background-secondary</code><br />
+            <code>--ats-border</code><br />
+            <code>--ats-error</code><br />
+            <code>--ats-radius</code><br />
+            <code>--ats-radius-lg</code><br />
+            <code>--ats-font-family</code><br />
+            <code>--ats-shadow</code><br />
+            <code>--ats-transition</code><br />
           </div>
         </div>
       </div>
@@ -423,18 +512,24 @@ const activeTab = ref<'client' | 'backend' | 'custom'>('client');
 
     <!-- ============ EVENT LOG ============ -->
     <div class="panel">
-      <div class="panel-title" style="justify-content: space-between;">
+      <div class="panel-title" style="justify-content: space-between">
         <span>
           Event Log
-          <span v-if="events.length" class="badge badge-widget">{{ events.length }}</span>
+          <span v-if="events.length" class="badge badge-widget">{{
+            events.length
+          }}</span>
         </span>
         <button class="clear-btn" @click="clearEvents">Clear</button>
       </div>
       <div class="events-log">
         <template v-if="events.length === 0">
-          <span style="color: #666;">Waiting for events...</span>
+          <span style="color: #666">Waiting for events...</span>
         </template>
-        <div v-for="evt in events" :key="evt.id" :class="['event-entry', evt.sourceClass]">
+        <div
+          v-for="evt in events"
+          :key="evt.id"
+          :class="['event-entry', evt.sourceClass]"
+        >
           <div class="event-header">
             <span class="event-name">{{ evt.name }}</span>
             <span class="event-time">{{ evt.time }}</span>
@@ -448,13 +543,22 @@ const activeTab = ref<'client' | 'backend' | 'custom'>('client');
     <!-- ============ TABS: Code ============ -->
     <div class="panel">
       <div class="tab-bar">
-        <button :class="{ active: activeTab === 'client' }" @click="activeTab = 'client'">
+        <button
+          :class="{ active: activeTab === 'client' }"
+          @click="activeTab = 'client'"
+        >
           Client-Side Code
         </button>
-        <button :class="{ active: activeTab === 'backend' }" @click="activeTab = 'backend'">
+        <button
+          :class="{ active: activeTab === 'backend' }"
+          @click="activeTab = 'backend'"
+        >
           Partner Backend Code
         </button>
-        <button :class="{ active: activeTab === 'custom' }" @click="activeTab = 'custom'">
+        <button
+          :class="{ active: activeTab === 'custom' }"
+          @click="activeTab = 'custom'"
+        >
           CSS Customization
         </button>
       </div>
@@ -641,10 +745,13 @@ app.<span class="func">post</span>(<span class="string">'/api/auth/ats-token'</s
 </template>
 
 <style>
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: #f5f5f5;
   margin: 0;
   padding: 20px;
@@ -680,7 +787,7 @@ body {
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 24px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .panel-title {
@@ -702,9 +809,18 @@ body {
   letter-spacing: 0.5px;
 }
 
-.badge-backend { background: #dbeafe; color: #1d4ed8; }
-.badge-client  { background: #dcfce7; color: #166534; }
-.badge-widget  { background: #fef3c7; color: #92400e; }
+.badge-backend {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.badge-client {
+  background: #dcfce7;
+  color: #166534;
+}
+.badge-widget {
+  background: #fef3c7;
+  color: #92400e;
+}
 
 /* ---- Config form ---- */
 .config-grid {
@@ -713,7 +829,9 @@ body {
   gap: 12px;
 }
 
-.config-grid .full { grid-column: 1 / -1; }
+.config-grid .full {
+  grid-column: 1 / -1;
+}
 
 .config-section {
   grid-column: 1 / -1;
@@ -725,7 +843,9 @@ body {
   border-bottom: 1px solid #e5e7eb;
 }
 
-.config-section:first-child { margin-top: 0; }
+.config-section:first-child {
+  margin-top: 0;
+}
 
 .config-section-label {
   font-size: 12px;
@@ -752,7 +872,9 @@ body {
   font-family: inherit;
 }
 
-.config-field input[type="text"] { font-family: monospace; }
+.config-field input[type="text"] {
+  font-family: monospace;
+}
 
 .css-vars-list {
   font-size: 11px;
@@ -778,12 +900,27 @@ body {
   transition: all 0.15s ease;
 }
 
-.btn-primary { background: #4DB8A8; color: white; }
-.btn-primary:hover { background: #3da89a; }
-.btn-secondary { background: #e5e7eb; color: #374151; }
-.btn-secondary:hover { background: #d1d5db; }
-.btn-danger { background: #fee2e2; color: #dc2626; }
-.btn-danger:hover { background: #fecaca; }
+.btn-primary {
+  background: #4db8a8;
+  color: white;
+}
+.btn-primary:hover {
+  background: #3da89a;
+}
+.btn-secondary {
+  background: #e5e7eb;
+  color: #374151;
+}
+.btn-secondary:hover {
+  background: #d1d5db;
+}
+.btn-danger {
+  background: #fee2e2;
+  color: #dc2626;
+}
+.btn-danger:hover {
+  background: #fecaca;
+}
 
 /* ---- Flow diagram ---- */
 .flow-steps {
@@ -815,9 +952,15 @@ body {
   margin-bottom: 6px;
 }
 
-.flow-step-dot.backend { background: #3b82f6; }
-.flow-step-dot.client  { background: #16a34a; }
-.flow-step-dot.widget  { background: #d97706; }
+.flow-step-dot.backend {
+  background: #3b82f6;
+}
+.flow-step-dot.client {
+  background: #16a34a;
+}
+.flow-step-dot.widget {
+  background: #d97706;
+}
 
 .flow-step-label {
   font-size: 11px;
@@ -843,10 +986,22 @@ body {
   margin-bottom: 16px;
 }
 
-.status-bar.ok { background: #dcfce7; color: #166534; }
-.status-bar.warn { background: #fef3c7; color: #92400e; }
-.status-bar.err { background: #fee2e2; color: #dc2626; }
-.status-bar.idle { background: #f3f4f6; color: #6b7280; }
+.status-bar.ok {
+  background: #dcfce7;
+  color: #166534;
+}
+.status-bar.warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+.status-bar.err {
+  background: #fee2e2;
+  color: #dc2626;
+}
+.status-bar.idle {
+  background: #f3f4f6;
+  color: #6b7280;
+}
 
 .status-dot {
   width: 8px;
@@ -855,10 +1010,18 @@ body {
   flex-shrink: 0;
 }
 
-.status-bar.ok .status-dot { background: #16a34a; }
-.status-bar.warn .status-dot { background: #d97706; }
-.status-bar.err .status-dot { background: #dc2626; }
-.status-bar.idle .status-dot { background: #9ca3af; }
+.status-bar.ok .status-dot {
+  background: #16a34a;
+}
+.status-bar.warn .status-dot {
+  background: #d97706;
+}
+.status-bar.err .status-dot {
+  background: #dc2626;
+}
+.status-bar.idle .status-dot {
+  background: #9ca3af;
+}
 
 /* ---- Component card ---- */
 .component-card {
@@ -871,10 +1034,10 @@ body {
 /* ---- Event log ---- */
 .events-log {
   background: #1a1a1a;
-  color: #4DB8A8;
+  color: #4db8a8;
   border-radius: 8px;
   padding: 16px;
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Consolas", monospace;
   font-size: 12px;
   max-height: 400px;
   overflow-y: auto;
@@ -888,8 +1051,12 @@ body {
   border-left: 3px solid #f59e0b;
 }
 
-.event-entry.source-ats { border-left-color: #3b82f6; }
-.event-entry.source-allfeat { border-left-color: #4DB8A8; }
+.event-entry.source-ats {
+  border-left-color: #3b82f6;
+}
+.event-entry.source-allfeat {
+  border-left-color: #4db8a8;
+}
 
 .event-header {
   display: flex;
@@ -897,10 +1064,20 @@ body {
   gap: 8px;
 }
 
-.event-name { color: #f59e0b; font-weight: 600; }
-.event-entry.source-ats .event-name { color: #3b82f6; }
-.event-entry.source-allfeat .event-name { color: #4DB8A8; }
-.event-time { color: #666; font-size: 11px; }
+.event-name {
+  color: #f59e0b;
+  font-weight: 600;
+}
+.event-entry.source-ats .event-name {
+  color: #3b82f6;
+}
+.event-entry.source-allfeat .event-name {
+  color: #4db8a8;
+}
+.event-time {
+  color: #666;
+  font-size: 11px;
+}
 .event-data {
   color: #9ca3af;
   margin-top: 6px;
@@ -911,11 +1088,21 @@ body {
   word-break: break-all;
   line-height: 1.5;
 }
-.event-data .json-key { color: #67e8f9; }
-.event-data .json-string { color: #86efac; }
-.event-data .json-number { color: #fbbf24; }
-.event-data .json-bool { color: #c084fc; }
-.event-data .json-null { color: #6b7280; }
+.event-data .json-key {
+  color: #67e8f9;
+}
+.event-data .json-string {
+  color: #86efac;
+}
+.event-data .json-number {
+  color: #fbbf24;
+}
+.event-data .json-bool {
+  color: #c084fc;
+}
+.event-data .json-null {
+  color: #6b7280;
+}
 
 .clear-btn {
   font-size: 12px;
@@ -927,7 +1114,10 @@ body {
   cursor: pointer;
 }
 
-.clear-btn:hover { background: #444; color: white; }
+.clear-btn:hover {
+  background: #444;
+  color: white;
+}
 
 /* ---- Code block ---- */
 .code-block {
@@ -935,7 +1125,7 @@ body {
   color: #e2e8f0;
   border-radius: 8px;
   padding: 16px;
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-family: "SF Mono", "Monaco", "Consolas", monospace;
   font-size: 12px;
   overflow-x: auto;
   line-height: 1.6;
@@ -946,11 +1136,21 @@ body {
   white-space: pre-wrap;
 }
 
-.code-block .comment { color: #64748b; }
-.code-block .keyword { color: #c084fc; }
-.code-block .string  { color: #86efac; }
-.code-block .func    { color: #67e8f9; }
-.code-block .tag     { color: #f472b6; }
+.code-block .comment {
+  color: #64748b;
+}
+.code-block .keyword {
+  color: #c084fc;
+}
+.code-block .string {
+  color: #86efac;
+}
+.code-block .func {
+  color: #67e8f9;
+}
+.code-block .tag {
+  color: #f472b6;
+}
 
 .tab-bar {
   display: flex;
@@ -972,7 +1172,7 @@ body {
 }
 
 .tab-bar button.active {
-  color: #4DB8A8;
-  border-bottom-color: #4DB8A8;
+  color: #4db8a8;
+  border-bottom-color: #4db8a8;
 }
 </style>

@@ -990,3 +990,568 @@
   text-decoration: none;
 }
 
+/* ============================================
+   Search Input (work selector + downloads)
+   ============================================ */
+
+.ats-search-wrap {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.ats-search-icon {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  color: var(--ats-text-muted);
+  pointer-events: none;
+}
+
+.ats-search-input {
+  padding-left: 38px;
+}
+
+/* ============================================
+   Work List (shared between work-selector + downloads)
+   ============================================ */
+
+.ats-work-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Cap the visible list height so the widget doesn't grow unbounded with
+     many works — user scrolls within the list area instead of the whole page.
+     ~8 rows visible at the default row size. */
+  max-height: 384px;
+  overflow-y: auto;
+  /* Reserve a little inner gutter so rows don't touch the scrollbar. */
+  padding-right: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ats-work-list-empty {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--ats-text-secondary);
+  font-size: 13px;
+  background: var(--ats-background-secondary);
+  border-radius: var(--ats-radius);
+}
+
+.ats-work-row {
+  border: 1px solid var(--ats-border);
+  border-radius: var(--ats-radius);
+  background: var(--ats-background);
+  transition: border-color var(--ats-transition), box-shadow var(--ats-transition);
+}
+
+.ats-work-row.selected {
+  border-color: var(--ats-primary);
+  box-shadow: 0 0 0 1px var(--ats-primary);
+}
+
+.ats-work-row.expanded {
+  background: var(--ats-background);
+}
+
+.ats-work-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  color: inherit;
+}
+
+.ats-work-row-header:hover {
+  background: var(--ats-background-secondary);
+}
+
+.ats-work-row-header:focus-visible {
+  outline: 2px solid var(--ats-primary);
+  outline-offset: -2px;
+}
+
+.ats-work-row-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ats-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ats-work-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ats-work-row-id {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--ats-text-muted);
+}
+
+.ats-work-row-version {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ats-primary-light);
+  color: var(--ats-primary);
+}
+
+.ats-work-row-check {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ats-primary);
+}
+
+/* ============================================
+   Work Detail Panel (expanded row content)
+   ============================================ */
+
+.ats-work-detail {
+  padding: 18px 18px 20px;
+  border-top: 1px solid var(--ats-border);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ats-work-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+@media (min-width: 480px) {
+  .ats-work-detail-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* `min-width: 0` lets a cell shrink below its content's intrinsic width — required for
+   `text-overflow: ellipsis` on the truncated filename to actually trigger inside the grid. */
+.ats-work-detail-grid > div {
+  min-width: 0;
+}
+
+.ats-work-detail-full {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ats-work-detail .ats-summary-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ats-text-muted);
+  margin-bottom: 2px;
+}
+
+.ats-work-detail .ats-summary-value {
+  font-size: 13px;
+  color: var(--ats-text);
+  word-break: break-word;
+}
+
+/* Forces a value to fit on one line — used for truncated hashes in the work-detail panel.
+   The renderer truncates the value visually; the `title` attribute still exposes the full hash. */
+.ats-truncate-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: normal;
+}
+
+/* Truncated hash + copy button on a single row. Mirrors the dashboard's HashItem pattern. */
+.ats-hash-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ats-hash-row .ats-hash-value {
+  /* Natural width only — the copy button sits immediately after the value rather than
+     being pushed to the far edge of the container. */
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.ats-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--ats-text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  flex-shrink: 0;
+  transition: color var(--ats-transition), background var(--ats-transition);
+}
+
+.ats-copy-btn:hover {
+  color: var(--ats-primary);
+  background: var(--ats-background-secondary);
+}
+
+.ats-copy-btn:focus-visible {
+  outline: 2px solid var(--ats-primary);
+  outline-offset: 1px;
+}
+
+.ats-copy-btn-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ats-copy-btn-toast {
+  display: none;
+  font-weight: 500;
+  color: var(--ats-success);
+}
+
+.ats-copy-btn.copied .ats-copy-btn-icon {
+  display: none;
+}
+
+.ats-copy-btn.copied .ats-copy-btn-toast {
+  display: inline;
+}
+
+/* Commitment + "Show creators" share one row in `renderWorkDetailPanel`: the commitment
+   block (label + truncated hash + copy) sits on the left, the toggle on the right. */
+.ats-work-detail-commitment {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ats-work-detail-commitment-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ats-work-detail-commitment > .ats-btn {
+  flex: 0 0 auto;
+}
+
+/* Download action row inside an expanded download work row */
+.ats-work-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 10px 10px;
+  margin-top: 4px;
+}
+
+.ats-work-actions .ats-btn {
+  flex: 1 1 180px;
+  padding: 10px 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.ats-work-actions .ats-btn svg {
+  flex-shrink: 0;
+}
+
+/* Chevron on download-list rows that navigate to the detail screen. */
+.ats-work-row-chevron {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ats-text-muted);
+  transition: color var(--ats-transition), transform var(--ats-transition);
+}
+
+.ats-work-row-header:hover .ats-work-row-chevron {
+  color: var(--ats-primary);
+  transform: translateX(2px);
+}
+
+/* ============================================
+   Download Detail Screen — per-work version history
+   ============================================ */
+
+.ats-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  margin-bottom: 12px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: var(--ats-primary);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+}
+
+.ats-back-link:hover {
+  color: var(--ats-primary-hover);
+  text-decoration: underline;
+}
+
+.ats-back-link svg {
+  flex-shrink: 0;
+}
+
+.ats-version-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--ats-border);
+  border-radius: var(--ats-radius);
+  background: var(--ats-background);
+}
+
+.ats-version-header-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ats-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ats-version-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ats-version-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Cap height so the widget doesn't grow indefinitely for works with many versions. */
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ats-version-card {
+  border: 1px solid var(--ats-border);
+  border-radius: var(--ats-radius);
+  background: var(--ats-background-secondary);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ats-version-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ats-version-card-head-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ats-version-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--ats-primary-light);
+  color: var(--ats-primary);
+}
+
+.ats-version-card-date {
+  font-size: 12px;
+  color: var(--ats-text-secondary);
+}
+
+/* Keep the three action buttons (Download file / Download certificate / Show creators)
+   on one row — the surrounding `.ats-version-card-head` is the wrap-point for narrow widths. */
+.ats-version-card-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ats-version-card-actions .ats-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.ats-version-card-actions .ats-btn svg {
+  flex-shrink: 0;
+}
+
+/* The download button is labelled with the filename — cap its width so a long name
+   doesn't blow out the action row. The full name stays available via the `title` attr. */
+.ats-download-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.ats-version-creators-chevron {
+  display: inline-flex;
+  align-items: center;
+  transition: transform var(--ats-transition);
+}
+
+.ats-version-creators-chevron.open {
+  transform: rotate(90deg);
+}
+
+/* Creators dropdown panel: sits between the action row and the metadata grid. */
+.ats-version-creators-panel {
+  margin-top: 4px;
+  padding: 12px 14px;
+  border-radius: var(--ats-radius);
+  background: var(--ats-background);
+  border: 1px solid var(--ats-border);
+  /* Final safety net: if a creator field is so long it still can't shrink, scroll the
+     panel rather than letting it break the widget's width. */
+  overflow-x: auto;
+}
+
+.ats-version-creators-empty {
+  font-size: 13px;
+  color: var(--ats-text-secondary);
+  text-align: center;
+  padding: 12px 0;
+}
+
+.ats-version-creators-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ats-version-creators-table thead th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ats-text-muted);
+  font-weight: 600;
+  padding: 0 8px 8px;
+  border-bottom: 1px solid var(--ats-border);
+}
+
+.ats-version-creators-table tbody td {
+  padding: 10px 8px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--ats-border);
+  color: var(--ats-text);
+  /* Long names / emails wrap inside the cell instead of forcing the table wide. */
+  overflow-wrap: anywhere;
+}
+
+.ats-version-creators-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.ats-version-creators-name {
+  font-weight: 500;
+}
+
+.ats-version-creators-email {
+  font-size: 12px;
+  color: var(--ats-text-secondary);
+  margin-top: 2px;
+}
+
+.ats-version-card-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px 16px;
+}
+
+@media (min-width: 480px) {
+  .ats-version-card-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 720px) {
+  .ats-version-card-grid {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+/* Allow the commitment cell to shrink so its truncated hash ellipsises instead of overflowing. */
+.ats-version-card-grid > div {
+  min-width: 0;
+}
+
+.ats-version-card-grid .ats-summary-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ats-text-muted);
+  margin-bottom: 2px;
+}
+
+.ats-version-card-grid .ats-summary-value {
+  font-size: 13px;
+  color: var(--ats-text);
+  word-break: break-all;
+}
+
+/* Keep a short label like "Registered at block" on a single line even when
+   the column is narrow — the value below it can wrap as needed. */
+.ats-summary-label-nowrap {
+  white-space: nowrap;
+}
+
+/* Full-width "Show creators" toggle anchored at the bottom of the version card. */
+.ats-version-creators-toggle {
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+

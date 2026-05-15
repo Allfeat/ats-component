@@ -3,10 +3,19 @@
 // ============================================
 
 /** UI screen the component is currently displaying. */
-export type Screen = 'FORM' | 'UPLOAD' | 'CONFIRMING' | 'TRACKING' | 'COMPLETE' | 'FAILED' | 'DISABLED';
+export type Screen =
+  | 'FORM'
+  | 'UPLOAD'
+  | 'CONFIRMING'
+  | 'TRACKING'
+  | 'COMPLETE'
+  | 'FAILED'
+  | 'DISABLED'
+  | 'DOWNLOADS'
+  | 'DOWNLOAD_DETAIL';
 
-/** Operating mode of the component: register a new work or update an existing one. */
-export type Mode = 'register' | 'update';
+/** Operating mode of the component: register a new work, update an existing one, or download user works. */
+export type Mode = 'register' | 'update' | 'download';
 
 /** Target blockchain network. */
 export type Network = 'testnet' | 'mainnet';
@@ -305,6 +314,144 @@ export interface DownloadCertificateResponse {
   /** ISO timestamp after which the download URL expires. */
   expires_at: string;
 }
+
+/** Response from `GET /v1/users/{externalUserId}/works/{workId}/download/asset`. */
+export interface DownloadAssetResponse {
+  /** Pre-signed URL to download the asset file. */
+  url: string;
+  /** ISO timestamp after which the download URL expires. */
+  expires_at: string;
+}
+
+// ============================================
+// User-Scoped Works (external-user-id)
+// ============================================
+
+/** Relay-style cursor pagination metadata. */
+export interface PageInfo {
+  has_next_page: boolean;
+  has_previous_page: boolean;
+  start_cursor: string | null;
+  end_cursor: string | null;
+}
+
+/**
+ * A work as returned by the user-scoped list endpoint.
+ *
+ * Mirrors the existing dashboard `WorkSummary` shape (see `services/ats/src/routes/works/types.rs`):
+ * same field names, same nullability rules. The only deviation is the additive `updated_at` field,
+ * which the widget needs to surface recently-updated works at the top of the list (the dashboard
+ * orders by `created_at` and doesn't need this).
+ */
+export interface UserWork {
+  /** UUID work identifier — used for download and version-update path params. */
+  id: string;
+  /** Numeric on-chain ATS id. `-1` if not yet assigned (matches dashboard sentinel). */
+  ats_id: number;
+  /** Owner blockchain address. */
+  owner: string;
+  /** Most recent version number. */
+  latest_version: number;
+  /** Commitment hash of the latest version. */
+  latest_commitment: string | null;
+  /** ISO timestamp of v1's registration. */
+  created_at: string | null;
+  /**
+   * ISO timestamp of the most recent version's registration.
+   *
+   * **Widget-specific addition**: not present on the dashboard `WorkSummary` — added so the
+   * widget can order works by most-recent activity. Falls back to `created_at` client-side
+   * if the backend omits it.
+   */
+  updated_at: string | null;
+  /** User-supplied title. */
+  title: string | null;
+  /** Original filename of the latest version's asset. */
+  asset_filename: string | null;
+  /** `true` when an asset file exists and is downloadable for this work. */
+  has_files: boolean;
+}
+
+/**
+ * A single on-chain version of a work.
+ *
+ * Mirrors the dashboard's `WorkVersion` shape (see `services/ats/src/routes/works/types.rs`)
+ * exactly — same field names (`registered_at_block`, `registered_at`), same optionality rules.
+ */
+export interface WorkVersionApi {
+  /** Version number (1-based, monotonically increasing). */
+  version: number;
+  /** Cryptographic commitment hash for this version, prefixed `0x`. Required. */
+  commitment: string;
+  /**
+   * Original filename of this version's asset. Each version stores its own filename
+   * because a re-upload can rename the asset between versions. `null` / omitted when
+   * the version has no asset file.
+   */
+  asset_filename?: string | null;
+  /** Block number that registered this version. */
+  registered_at_block?: number | null;
+  /** ISO timestamp this version was registered on-chain. */
+  registered_at?: string | null;
+  /** Hash of the media file at the time this version was registered. */
+  media_hash?: string;
+  /** Merkle root of the version's metadata. */
+  merkle_root?: string;
+  /** Hash of the block that included the transaction. */
+  block_hash?: string;
+  /** On-chain transaction hash for the version registration. */
+  tx_hash?: string;
+  /** Network + service fee in credits paid to register this version. */
+  fee_credits?: number;
+  /** Storage fee in credits paid to store this version's asset. */
+  storage_fee_credits?: number;
+}
+
+/** Response from `GET /v1/users/{externalUserId}/works/{workId}/versions`. Mirrors `ListVersionsResponse`. */
+export interface ListWorkVersionsResponse {
+  /** Numeric on-chain ATS id of the work (echoed from path's `workId` lookup). `-1` if unassigned. */
+  ats_id: number;
+  /** Versions in chronological order (oldest first). The widget reverses for display. */
+  versions: WorkVersionApi[];
+}
+
+/**
+ * A creator attached to a version.
+ *
+ * Mirrors the dashboard's `CreatorResponse` shape exactly.
+ */
+export interface WorkCreatorResponse {
+  full_name: string;
+  email?: string;
+  /** Role names (e.g. `["Author", "Composer"]`). */
+  roles: string[];
+  ipi?: string;
+  isni?: string;
+}
+
+/** Response from `GET /v1/users/{externalUserId}/works/{workId}/versions/{version}/creators`. Mirrors `ListCreatorsResponse`. */
+export interface ListWorkCreatorsResponse {
+  ats_id: number;
+  version: number;
+  creators: WorkCreatorResponse[];
+}
+
+/** Response from `GET /v1/users/{externalUserId}/works`. */
+export interface ListUserWorksResponse {
+  works: UserWork[];
+  page_info: PageInfo;
+  total_count: number | null;
+}
+
+/**
+ * Aliases for the user-scoped version-update endpoints. Bodies are identical to the
+ * access-code-based variants; only the URL differs. Kept as aliases so call-sites
+ * read naturally and divergence is easy to introduce later.
+ */
+export type InitWorkVersionUploadResponse = InitVersionUploadResponse;
+export type InitWorkVersionResponse = InitVersionResponse;
+export type PrepareWorkVersionResponse = PrepareVersionResponse;
+export type ConfirmWorkVersionResponse = ConfirmVersionResponse;
 
 // ============================================
 // Error Handling

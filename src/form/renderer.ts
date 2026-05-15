@@ -1,9 +1,9 @@
-import type { AccessData, CreatorFormData, FormState, FormSubStep } from './types';
+import type { AccessData, CreatorFormData, FormState, FormSubStep, SelectedWork, VersionCreatorsEntry, VersionListState, WorkCreator, WorkListState, WorkVersion } from './types';
 import { CREATOR_ROLES } from './types';
 import { getTrackingSteps } from '../api/types';
 import type { Mode } from '../api/types';
 import { MAX_CREATORS, MAX_TITLE_LENGTH, ACCESS_CODE_LENGTH } from '../constants';
-import { formatFileSize, escapeHtml } from '../utils/helpers';
+import { formatFileSize, escapeHtml, formatShortDate, truncateHash } from '../utils/helpers';
 
 // ============================================
 // Lucide SVG Icons (inline, zero deps)
@@ -23,6 +23,8 @@ const ICONS = {
   copy: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`,
   search: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`,
   alertTriangle: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`,
+  download: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>`,
+  chevronRight: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`,
 } as const;
 
 // ============================================
@@ -35,6 +37,7 @@ interface StepDef {
 }
 
 const ACCESS_CODE_STEP: StepDef = { id: 'access_code', label: 'Access Code' };
+const WORK_SELECT_STEP: StepDef = { id: 'work_select', label: 'Select Work' };
 
 const FORM_STEPS: StepDef[] = [
   { id: 'file', label: 'File Selection' },
@@ -50,13 +53,22 @@ const UPDATE_FORM_STEPS: StepDef[] = [
   { id: 'review', label: 'Summary' },
 ];
 
-export function getFormSteps(mode: Mode): StepDef[] {
-  if (mode === 'update') return UPDATE_FORM_STEPS;
+const UPDATE_FORM_STEPS_USER_SCOPED: StepDef[] = [
+  WORK_SELECT_STEP,
+  { id: 'file', label: 'File Selection' },
+  { id: 'creators', label: 'Creators' },
+  { id: 'review', label: 'Summary' },
+];
+
+export function getFormSteps(mode: Mode, externalUserMode = false): StepDef[] {
+  if (mode === 'update') {
+    return externalUserMode ? UPDATE_FORM_STEPS_USER_SCOPED : UPDATE_FORM_STEPS;
+  }
   return FORM_STEPS;
 }
 
-function getStepIndex(subStep: FormSubStep, mode: Mode): number {
-  return getFormSteps(mode).findIndex(s => s.id === subStep);
+function getStepIndex(subStep: FormSubStep, mode: Mode, externalUserMode = false): number {
+  return getFormSteps(mode, externalUserMode).findIndex(s => s.id === subStep);
 }
 
 // ============================================
@@ -72,6 +84,7 @@ function getStepIcon(stepId: string): string {
     case 'creators': return ICONS.users;
     case 'review': return ICONS.clipboardList;
     case 'access_code': return ICONS.search;
+    case 'work_select': return ICONS.search;
     default: return '';
   }
 }
@@ -80,9 +93,9 @@ function getStepIcon(stepId: string): string {
 // Step Indicator
 // ============================================
 
-export function renderStepIndicator(currentSubStep: FormSubStep, mode: Mode): string {
-  const steps = getFormSteps(mode);
-  const currentIndex = getStepIndex(currentSubStep, mode);
+export function renderStepIndicator(currentSubStep: FormSubStep, mode: Mode, externalUserMode = false): string {
+  const steps = getFormSteps(mode, externalUserMode);
+  const currentIndex = getStepIndex(currentSubStep, mode, externalUserMode);
 
   return `
     <div class="ats-steps">
@@ -585,6 +598,449 @@ export function renderTokenExpiredOverlay(): string {
       <div class="ats-spinner" style="width: 32px; height: 32px; border-width: 3px;"></div>
       <div class="ats-loading-text">Session expired — waiting for new token...</div>
     </div>
+  `;
+}
+
+// ============================================
+// Copyable hash (commitment) display
+// ============================================
+
+/**
+ * Renders a truncated hash + copy-to-clipboard button matching the dashboard's HashItem
+ * pattern (see `feat-ui/work_version_card.rs`). The full hash is exposed via `data-value`
+ * on the button so the click handler can copy without consulting state.
+ *
+ * Returns the row HTML — the caller is responsible for the surrounding label.
+ */
+function renderCopyableHash(rawHash: string | null | undefined, displayLen = 12): string {
+  if (!rawHash) {
+    return `<div class="ats-summary-value">—</div>`;
+  }
+  const display = escapeHtml(truncateHash(rawHash, displayLen));
+  const full = escapeHtml(rawHash);
+  return `
+    <div class="ats-hash-row">
+      <div class="ats-summary-value ats-monospace-sm ats-truncate-line ats-hash-value" title="${full}">${display}</div>
+      <button type="button"
+              class="ats-copy-btn"
+              data-action="copy-hash"
+              data-value="${full}"
+              aria-label="Copy hash"
+              title="Copy">
+        <span class="ats-copy-btn-icon">${ICONS.copy}</span>
+        <span class="ats-copy-btn-toast" aria-hidden="true">Copied!</span>
+      </button>
+    </div>
+  `;
+}
+
+// ============================================
+// Work-list helpers (shared by work-selector + downloads)
+// ============================================
+
+/** Case-insensitive filter on title. Mirrors the feat reference's client-side filter. */
+function filterWorks(works: SelectedWork[], search: string): SelectedWork[] {
+  const q = search.trim().toLowerCase();
+  if (!q) return works;
+  return works.filter(w => w.title.toLowerCase().includes(q));
+}
+
+type RowIndicator = 'check' | 'chevron' | 'none';
+
+function renderWorkRowHeader(
+  w: SelectedWork,
+  opts: { action: string; indicator: RowIndicator },
+): string {
+  const title = w.title ? escapeHtml(w.title) : '<em>(untitled)</em>';
+  const atsId = w.atsId < 0 ? '—' : `#${w.atsId}`;
+  let indicatorHtml = '';
+  if (opts.indicator === 'check') {
+    indicatorHtml = `<span class="ats-work-row-check" aria-label="Selected">${ICONS.check}</span>`;
+  } else if (opts.indicator === 'chevron') {
+    indicatorHtml = `<span class="ats-work-row-chevron" aria-hidden="true">${ICONS.chevronRight}</span>`;
+  }
+  return `
+    <button type="button"
+            class="ats-work-row-header"
+            data-action="${opts.action}"
+            data-work-id="${escapeHtml(w.id)}">
+      <div class="ats-work-row-title">${title}</div>
+      <div class="ats-work-row-meta">
+        <span class="ats-work-row-id">${atsId}</span>
+        <span class="ats-work-row-version">v${w.latestVersion}</span>
+        ${indicatorHtml}
+      </div>
+    </button>
+  `;
+}
+
+function renderWorkDetailPanel(
+  w: SelectedWork,
+  list: WorkListState,
+  opts: { showSelect: boolean; selected: boolean },
+): string {
+  const filenameRaw = w.assetFilename ?? '';
+  const filenameDisplay = filenameRaw ? escapeHtml(filenameRaw) : '—';
+  const filenameTitle = filenameRaw ? ` title="${escapeHtml(filenameRaw)}"` : '';
+  const creatorsExpanded = list.creatorsExpanded[w.id] === true;
+  const creatorsEntry = list.creatorsByWork[w.id];
+
+  let selectLabel = 'Select this work';
+  if (opts.selected) selectLabel = list.selecting ? 'Loading…' : 'Selected';
+
+  return `
+    <div class="ats-work-detail">
+      <div class="ats-work-detail-grid">
+        <div>
+          <div class="ats-summary-label">Filename</div>
+          <div class="ats-summary-value ats-truncate-line"${filenameTitle}>${filenameDisplay}</div>
+        </div>
+        <div>
+          <div class="ats-summary-label">Created</div>
+          <div class="ats-summary-value">${formatShortDate(w.createdAt)}</div>
+        </div>
+      </div>
+      <div class="ats-work-detail-commitment">
+        <div class="ats-work-detail-commitment-main">
+          <div class="ats-summary-label">Commitment</div>
+          ${renderCopyableHash(w.latestCommitment, 12)}
+        </div>
+        <button type="button"
+                class="ats-btn ats-btn-sm ats-btn-outline"
+                data-action="toggle-work-creators"
+                data-work-id="${escapeHtml(w.id)}"
+                aria-expanded="${creatorsExpanded}">
+          <span class="ats-version-creators-chevron ${creatorsExpanded ? 'open' : ''}" aria-hidden="true">${ICONS.chevronRight}</span>
+          <span>${creatorsExpanded ? 'Hide creators' : 'Show creators'}</span>
+        </button>
+      </div>
+      ${creatorsExpanded ? renderVersionCreatorsPanel(creatorsEntry) : ''}
+      ${opts.showSelect ? `
+        <button type="button"
+                class="ats-btn ${opts.selected ? 'ats-btn-primary' : 'ats-btn-outline-primary'} ats-w-full ats-mt-md"
+                data-action="select-work"
+                data-work-id="${escapeHtml(w.id)}"
+                ${list.selecting ? 'disabled' : ''}>
+          ${selectLabel}
+        </button>
+      ` : ''}
+    </div>
+  `;
+}
+
+interface RowBehavior {
+  /** `data-action` for the row header button. */
+  action: string;
+  /** Right-side indicator: `check` for selected, `chevron` for navigation, `none` otherwise. */
+  indicator: (w: SelectedWork) => RowIndicator;
+  /** Optional inline body renderer. Returning `null` means no body for that row. */
+  renderRowBody?: (w: SelectedWork) => string | null;
+}
+
+function renderWorkListShell(
+  list: WorkListState,
+  options: {
+    title: string;
+    emptyMessage: string;
+    row: RowBehavior;
+    afterListSlot?: string;
+    footerSlot?: string;
+  },
+): string {
+  const filtered = filterWorks(list.works, list.search);
+
+  let listContent = '';
+  if (list.status === 'loading') {
+    listContent = `
+      <div class="ats-work-list-empty">
+        <div class="ats-spinner" style="width: 28px; height: 28px; border-width: 3px; margin: 0 auto 12px;"></div>
+        <div class="ats-loading-text">Loading your works…</div>
+      </div>
+    `;
+  } else if (list.status === 'error') {
+    listContent = `
+      <div class="ats-alert ats-alert-error">
+        ${escapeHtml(list.error || 'Failed to load works.')}
+      </div>
+      <div class="ats-btn-group ats-btn-group-right ats-mt-md">
+        <button type="button" class="ats-btn ats-btn-secondary" data-action="reload-works">Retry</button>
+      </div>
+    `;
+  } else if (list.status === 'loaded' && filtered.length === 0) {
+    listContent = `<div class="ats-work-list-empty">${escapeHtml(options.emptyMessage)}</div>`;
+  } else if (list.status === 'loaded') {
+    listContent = `
+      <div class="ats-work-list">
+        ${filtered.map(w => {
+          const expanded = list.expandedId === w.id;
+          const selected = list.selectedId === w.id;
+          const body = options.row.renderRowBody && expanded ? options.row.renderRowBody(w) : null;
+          return `
+            <div class="ats-work-row ${selected ? 'selected' : ''} ${expanded && body ? 'expanded' : ''}">
+              ${renderWorkRowHeader(w, { action: options.row.action, indicator: options.row.indicator(w) })}
+              ${body || ''}
+            </div>
+          `;
+        }).join('')}
+      </div>
+      ${list.hasNextPage ? `
+        <div class="ats-btn-group ats-btn-group-center ats-mt-md">
+          <button type="button" class="ats-btn ats-btn-outline" data-action="load-more-works">Load more</button>
+        </div>
+      ` : ''}
+    `;
+  }
+
+  return `
+    <div class="ats-section-title ats-section-title-centered">${escapeHtml(options.title)}</div>
+    <div class="ats-search-wrap">
+      <span class="ats-search-icon">${ICONS.search}</span>
+      <input
+        type="text"
+        id="work-search"
+        class="ats-input ats-search-input"
+        placeholder="Search by title…"
+        value="${escapeHtml(list.search)}"
+        ${list.status === 'loading' ? 'disabled' : ''}
+      />
+    </div>
+    ${listContent}
+    ${options.afterListSlot || ''}
+    ${options.footerSlot || ''}
+  `;
+}
+
+// ============================================
+// Work Selector Step (update flow with external-user-id)
+// ============================================
+
+export function renderWorkSelectorStep(
+  list: WorkListState,
+  opts: { generalError?: string | null } = {},
+): string {
+  const generalError = opts.generalError
+    ? `<div class="ats-error-message ats-mt-sm">${escapeHtml(opts.generalError)}</div>`
+    : '';
+
+  return renderWorkListShell(list, {
+    title: 'Select a work to update',
+    emptyMessage: 'No works found for this user.',
+    row: {
+      action: 'toggle-work',
+      indicator: (w) => (list.selectedId === w.id ? 'check' : 'none'),
+      renderRowBody: (w) => renderWorkDetailPanel(w, list, {
+        showSelect: true,
+        selected: list.selectedId === w.id,
+      }),
+    },
+    footerSlot: generalError,
+  });
+}
+
+// ============================================
+// Download List Screen
+// ============================================
+
+export function renderDownloadListScreen(list: WorkListState): string {
+  return renderWorkListShell(list, {
+    title: 'Your protected works',
+    emptyMessage: 'No works available to download.',
+    row: {
+      action: 'open-work-detail',
+      indicator: () => 'chevron',
+    },
+  });
+}
+
+// ============================================
+// Download Detail Screen — per-work version history
+// ============================================
+
+function renderVersionCreatorsPanel(entry: VersionCreatorsEntry | undefined): string {
+  if (!entry || entry.status === 'idle') {
+    return ''; // First expand renders before the fetch settles — show nothing.
+  }
+  if (entry.status === 'loading') {
+    return `
+      <div class="ats-version-creators-panel">
+        <div class="ats-loading-text">Loading creators…</div>
+      </div>
+    `;
+  }
+  if (entry.status === 'error') {
+    return `
+      <div class="ats-version-creators-panel">
+        <div class="ats-alert ats-alert-error">${escapeHtml(entry.error || 'Failed to load creators.')}</div>
+      </div>
+    `;
+  }
+  if (entry.creators.length === 0) {
+    return `
+      <div class="ats-version-creators-panel">
+        <div class="ats-version-creators-empty">No creators recorded for this version.</div>
+      </div>
+    `;
+  }
+  return `
+    <div class="ats-version-creators-panel">
+      <table class="ats-version-creators-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Roles</th>
+            <th>IPI</th>
+            <th>ISNI</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${entry.creators.map((c: WorkCreator) => `
+            <tr>
+              <td>
+                <div class="ats-version-creators-name">${escapeHtml(c.fullName)}</div>
+                ${c.email ? `<div class="ats-version-creators-email">${escapeHtml(c.email)}</div>` : ''}
+              </td>
+              <td>${c.roles.length ? escapeHtml(c.roles.join(', ')) : '—'}</td>
+              <td class="ats-monospace-sm">${c.ipi ? escapeHtml(c.ipi) : '—'}</td>
+              <td class="ats-monospace-sm">${c.isni ? escapeHtml(c.isni) : '—'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWorkVersionCard(
+  work: SelectedWork,
+  v: WorkVersion,
+  downloading: 'asset' | 'certificate' | null | undefined,
+  creatorsExpanded: boolean,
+  creatorsEntry: VersionCreatorsEntry | undefined,
+): string {
+  const inFlightAsset = downloading === 'asset';
+  const inFlightCert = downloading === 'certificate';
+  const assetDisabled = !work.hasFiles;
+
+  const block = v.registeredAtBlock == null ? '—' : String(v.registeredAtBlock);
+  // Match the dashboard's FileDownloadLink: the download control is labelled with the
+  // actual filename rather than a generic "Download file".
+  const downloadLabel = inFlightAsset
+    ? 'Preparing…'
+    : (v.assetFilename && v.assetFilename.length > 0 ? v.assetFilename : 'Download file');
+
+  return `
+    <div class="ats-version-card ${creatorsExpanded ? 'creators-expanded' : ''}">
+      <div class="ats-version-card-head">
+        <div class="ats-version-card-head-left">
+          <span class="ats-version-badge">v${v.version}</span>
+          <span class="ats-version-card-date">${formatShortDate(v.registeredAt)}</span>
+        </div>
+        <div class="ats-version-card-actions">
+          <button type="button"
+                  class="ats-btn ats-btn-sm ats-btn-primary ats-download-file-btn"
+                  data-action="download-version-asset"
+                  data-version="${v.version}"
+                  title="${escapeHtml(downloadLabel)}"
+                  ${inFlightAsset || assetDisabled ? 'disabled' : ''}
+                  ${assetDisabled ? 'title="No asset file available for this work"' : ''}>
+            ${ICONS.download}
+            <span class="ats-download-file-name">${escapeHtml(downloadLabel)}</span>
+          </button>
+          <button type="button"
+                  class="ats-btn ats-btn-sm ats-btn-outline-primary"
+                  data-action="download-version-cert"
+                  data-version="${v.version}"
+                  ${inFlightCert ? 'disabled' : ''}>
+            ${ICONS.fileText}
+            <span>${inFlightCert ? 'Preparing…' : 'Download certificate'}</span>
+          </button>
+        </div>
+      </div>
+      <div class="ats-version-card-grid">
+        <div>
+          <div class="ats-summary-label">Commitment</div>
+          ${renderCopyableHash(v.commitment, 14)}
+        </div>
+        <div>
+          <div class="ats-summary-label ats-summary-label-nowrap">Registered at block</div>
+          <div class="ats-summary-value">${escapeHtml(block)}</div>
+        </div>
+      </div>
+      <button type="button"
+              class="ats-btn ats-btn-sm ats-btn-outline ats-w-full ats-version-creators-toggle"
+              data-action="toggle-version-creators"
+              data-version="${v.version}"
+              aria-expanded="${creatorsExpanded}">
+        <span class="ats-version-creators-chevron ${creatorsExpanded ? 'open' : ''}" aria-hidden="true">${ICONS.chevronRight}</span>
+        <span>${creatorsExpanded ? 'Hide creators' : 'Show creators'}</span>
+      </button>
+      ${creatorsExpanded ? renderVersionCreatorsPanel(creatorsEntry) : ''}
+    </div>
+  `;
+}
+
+export function renderDownloadDetailScreen(state: VersionListState): string {
+  const work = state.work;
+  const backBtn = `
+    <button type="button" class="ats-btn ats-btn-link ats-back-link" data-action="back-to-list">
+      ${ICONS.arrowLeft}
+      <span>Back to works</span>
+    </button>
+  `;
+
+  if (!work) {
+    return `
+      ${backBtn}
+      <div class="ats-work-list-empty">Work not found.</div>
+    `;
+  }
+
+  const title = work.title ? escapeHtml(work.title) : '<em>(untitled)</em>';
+  const atsId = work.atsId == null ? '—' : `#${work.atsId}`;
+
+  let body = '';
+  if (state.status === 'loading') {
+    body = `
+      <div class="ats-work-list-empty">
+        <div class="ats-spinner" style="width: 28px; height: 28px; border-width: 3px; margin: 0 auto 12px;"></div>
+        <div class="ats-loading-text">Loading versions…</div>
+      </div>
+    `;
+  } else if (state.status === 'error') {
+    body = `
+      <div class="ats-alert ats-alert-error">${escapeHtml(state.error || 'Failed to load versions.')}</div>
+      <div class="ats-btn-group ats-btn-group-right ats-mt-md">
+        <button type="button" class="ats-btn ats-btn-secondary" data-action="reload-versions">Retry</button>
+      </div>
+    `;
+  } else if (state.status === 'loaded' && state.versions.length === 0) {
+    body = `<div class="ats-work-list-empty">No versions found.</div>`;
+  } else if (state.status === 'loaded') {
+    // Newest first.
+    const sorted = [...state.versions].sort((a, b) => b.version - a.version);
+    body = `
+      <div class="ats-version-list">
+        ${sorted.map(v => renderWorkVersionCard(
+          work,
+          v,
+          state.downloading[v.version],
+          state.creatorsExpanded[v.version] === true,
+          state.creatorsByVersion[v.version],
+        )).join('')}
+      </div>
+    `;
+  }
+
+  return `
+    ${backBtn}
+    <div class="ats-version-header">
+      <div class="ats-version-header-title">${title}</div>
+      <div class="ats-version-header-meta">
+        <span class="ats-work-row-id">${atsId}</span>
+        <span class="ats-work-row-version">${state.versions.length || work.latestVersion} version${(state.versions.length || work.latestVersion) === 1 ? '' : 's'}</span>
+      </div>
+    </div>
+    ${body}
   `;
 }
 

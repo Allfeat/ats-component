@@ -28,6 +28,15 @@ export {
   downloadCertificate,
   subscribeToTransaction,
   pollTransactionStatus,
+  listUserWorks,
+  listUserWorkVersions,
+  listUserWorkVersionCreators,
+  downloadUserWorkVersionAsset,
+  downloadUserWorkVersionCertificate,
+  initUserWorkVersionUpload,
+  initUserWorkVersion,
+  prepareUserWorkVersion,
+  confirmUserWorkVersion,
 } from './api/client';
 
 // API types
@@ -43,12 +52,24 @@ export type {
   InitVersionResponse,
   PrepareVersionResponse,
   ConfirmVersionResponse,
+  InitWorkVersionUploadResponse,
+  InitWorkVersionResponse,
+  PrepareWorkVersionResponse,
+  ConfirmWorkVersionResponse,
   WsMessage,
   WsMessageType,
   WsStepDetails,
   TransactionStatusResponse,
   TrackingStep,
   DownloadCertificateResponse,
+  DownloadAssetResponse,
+  UserWork,
+  ListUserWorksResponse,
+  WorkVersionApi,
+  ListWorkVersionsResponse,
+  WorkCreatorResponse,
+  ListWorkCreatorsResponse,
+  PageInfo,
 } from './api/types';
 
 export type {
@@ -70,6 +91,13 @@ export type {
   ComponentState,
   CompletionData,
   AccessData,
+  SelectedWork,
+  WorkListState,
+  WorkListStatus,
+  WorkVersion,
+  WorkCreator,
+  VersionListState,
+  VersionCreatorsEntry,
 } from './form/types';
 
 export {
@@ -77,6 +105,8 @@ export {
   createEmptyCreator,
   createDefaultFormState,
   createDefaultComponentState,
+  createDefaultWorkListState,
+  createDefaultVersionListState,
 } from './form/types';
 
 // Validation
@@ -97,9 +127,15 @@ export type {
   FailedDetail,
   TokenExpiredDetail,
   ErrorDetail,
+  ModeChangedDetail,
+  WorkSelectedDetail,
+  DownloadStartedDetail,
+  DownloadCompleteDetail,
+  DownloadFailedDetail,
+  DownloadKind,
 } from './utils/events';
 
 export { EVENT_NAMES } from './utils/events';
 
 // Utility helpers
-export { formatFileSize, escapeHtml } from './utils/helpers';
+export { formatFileSize, escapeHtml, formatUtcDate, formatShortDate, truncateHash, openPresignedDownload } from './utils/helpers';

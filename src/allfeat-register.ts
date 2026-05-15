@@ -12,11 +12,23 @@ import {
   downloadCertificate,
   subscribeToTransaction,
   pollTransactionStatus,
+  listUserWorks,
+  listUserWorkVersions,
+  listUserWorkVersionCreators,
+  downloadUserWorkVersionAsset,
+  downloadUserWorkVersionCertificate,
+  initUserWorkVersionUpload,
+  initUserWorkVersion,
+  prepareUserWorkVersion,
+  confirmUserWorkVersion,
 } from './api/client';
 import type {
   WidgetError,
   CreatorRequest,
   AccessWorkResponse,
+  UserWork,
+  WorkCreatorResponse,
+  WorkVersionApi,
   WsStepDetails,
 } from './api/types';
 import type { Mode, Network, Screen } from './api/types';
@@ -25,7 +37,12 @@ import {
   ComponentState,
   FormSubStep,
   AccessData,
+  SelectedWork,
+  WorkCreator,
+  WorkVersion,
   createDefaultComponentState,
+  createDefaultVersionListState,
+  createDefaultWorkListState,
   createEmptyCreator,
 } from './form/types';
 import { creatorSchema } from './form/schema';
@@ -43,9 +60,12 @@ import {
   renderDisabledScreen,
   renderTokenExpiredOverlay,
   renderAccessCodeStep,
+  renderWorkSelectorStep,
+  renderDownloadListScreen,
+  renderDownloadDetailScreen,
   getFormSteps,
 } from './form/renderer';
-import { formatFileSize } from './utils/helpers';
+import { formatFileSize, openPresignedDownload } from './utils/helpers';
 import type { ErrorDetail } from './utils/events';
 import {
   dispatchReady,
@@ -58,6 +78,11 @@ import {
   dispatchFailed,
   dispatchTokenExpired,
   dispatchError,
+  dispatchModeChanged,
+  dispatchWorkSelected,
+  dispatchDownloadStarted,
+  dispatchDownloadComplete,
+  dispatchDownloadFailed,
 } from './utils/events';
 import { getErrorMessage } from './errors/messages';
 import { darkenColor, lightenColor } from './utils/colors';
@@ -82,13 +107,14 @@ import styles from './styles/component.css';
 // ============================================
 
 export class AllfeatRegister extends HTMLElement {
-  static observedAttributes = ['site-key', 'token', 'ats-url', 'network', 'mode', 'max-file-size'];
+  static observedAttributes = ['site-key', 'token', 'ats-url', 'network', 'mode', 'max-file-size', 'external-user-id'];
 
   private shadow: ShadowRoot;
   private state: ComponentState;
   private wsCleanup: WebSocket | null = null;
   private pollingCleanup: (() => void) | null = null;
   private tokenExpiryTimeout: ReturnType<typeof setTimeout> | null = null;
+  private searchDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
   private pendingStage: string | null = null;
   private _maxFileSize: number = DEFAULT_MAX_FILE_SIZE_BYTES;
 
@@ -119,7 +145,20 @@ export class AllfeatRegister extends HTMLElement {
   }
 
   get mode(): Mode {
-    return (this.getAttribute('mode') as Mode) || 'register';
+    const attr = this.getAttribute('mode');
+    if (attr === 'register' || attr === 'update' || attr === 'download') return attr;
+    return 'register';
+  }
+
+  /** Optional external user id used by the user-scoped works flows (update + download). */
+  get externalUserId(): string | null {
+    const v = this.getAttribute('external-user-id');
+    return v && v.length > 0 ? v : null;
+  }
+
+  /** Whether an external user id is present — gates the new flows. */
+  get hasExternalUser(): boolean {
+    return this.externalUserId !== null;
   }
 
   get maxFileSizeAttr(): number | null {
@@ -154,14 +193,11 @@ export class AllfeatRegister extends HTMLElement {
     // Apply primary color from CSS variable if host has it
     this.updatePrimaryColor();
 
-    // Set initial sub-step for update mode
-    if (this.mode === 'update') {
-      this.state.formSubStep = 'access_code';
-    }
-
+    // Apply the mode-specific initial screen/sub-step.
+    this.applyModeRouting();
     this.render();
 
-    // Fetch max file size from API — only for register (update defers until access code is verified)
+    // Fetch max file size from API — only for register (other flows defer).
     if (this.atsUrl && this.mode === 'register') {
       this.fetchAndApplyStats(this.atsUrl, this.network);
     }
@@ -174,6 +210,10 @@ export class AllfeatRegister extends HTMLElement {
     if (this.tokenExpiryTimeout) {
       clearTimeout(this.tokenExpiryTimeout);
       this.tokenExpiryTimeout = null;
+    }
+    if (this.searchDebounceTimeout) {
+      clearTimeout(this.searchDebounceTimeout);
+      this.searchDebounceTimeout = null;
     }
   }
 
@@ -194,19 +234,62 @@ export class AllfeatRegister extends HTMLElement {
             this.handleDownload();
           } else if (stage === 'access_code') {
             this.handleNext();
+          } else if (stage === 'work_select' || stage === 'download_list') {
+            this.loadUserWorks();
           } else {
             this.handleSubmit();
           }
         } else {
+          // After receiving a fresh token, lazy-load the user-works list if we're on
+          // a screen that needs it and haven't loaded yet (covers the case where the
+          // host sets `mode` before `token`).
+          const needsLoad = newValue
+            && this.hasExternalUser
+            && this.state.workList.status === 'idle'
+            && (this.state.screen === 'DOWNLOADS'
+                || (this.state.screen === 'FORM' && this.state.formSubStep === 'work_select'));
+          if (needsLoad) this.loadUserWorks();
+          // Same lazy-load for the per-work versions list when entering DOWNLOAD_DETAIL.
+          const needsVersionLoad = newValue
+            && this.hasExternalUser
+            && this.state.screen === 'DOWNLOAD_DETAIL'
+            && this.state.versionList.work
+            && this.state.versionList.status === 'idle';
+          if (needsVersionLoad && this.state.versionList.work) {
+            this.loadWorkVersions(this.state.versionList.work.id);
+          }
           this.render();
         }
         break;
 
       case 'mode':
-        // Reset form when mode changes
+        // Reset form when mode changes, then route to the new mode's initial screen.
         this.state = createDefaultComponentState();
-        if (newValue === 'update') {
-          this.state.formSubStep = 'access_code';
+        this.applyModeRouting();
+        dispatchModeChanged(this, { mode: this.mode });
+        this.render();
+        break;
+
+      case 'external-user-id':
+        // Reset list state and re-route within update/download flows if currently active.
+        this.state.workList = createDefaultWorkListState();
+        this.state.versionList = createDefaultVersionListState();
+        this.state.selectedWork = null;
+        // If we were drilled into a work-detail, drop back to the list — the previous
+        // detail belonged to a different user.
+        if (this.state.screen === 'DOWNLOAD_DETAIL') {
+          this.state.screen = 'DOWNLOADS';
+        }
+        if (this.mode === 'update' && this.state.screen === 'FORM') {
+          this.state.formSubStep = this.hasExternalUser ? 'work_select' : 'access_code';
+          if (this.hasExternalUser) this.loadUserWorks();
+        } else if (this.mode === 'download') {
+          if (this.hasExternalUser) {
+            this.loadUserWorks();
+          } else {
+            this.state.workList.status = 'error';
+            this.state.workList.error = 'Download mode requires an external-user-id attribute.';
+          }
         }
         this.render();
         break;
@@ -227,6 +310,32 @@ export class AllfeatRegister extends HTMLElement {
   }
 
   // ============================================
+  // Flow Routing
+  // ============================================
+
+  /** Route to the appropriate initial screen/sub-step for the current `mode` attribute. */
+  private applyModeRouting(): void {
+    const mode = this.mode;
+    if (mode === 'download') {
+      this.state.screen = 'DOWNLOADS';
+      if (this.hasExternalUser) {
+        this.loadUserWorks();
+      } else {
+        this.state.workList.status = 'error';
+        this.state.workList.error = 'Download mode requires an external-user-id attribute.';
+      }
+      return;
+    }
+    this.state.screen = 'FORM';
+    if (mode === 'update') {
+      this.state.formSubStep = this.hasExternalUser ? 'work_select' : 'access_code';
+      if (this.hasExternalUser) this.loadUserWorks();
+    } else {
+      this.state.formSubStep = 'file';
+    }
+  }
+
+  // ============================================
   // Public Methods
   // ============================================
 
@@ -241,9 +350,7 @@ export class AllfeatRegister extends HTMLElement {
       this.tokenExpiryTimeout = null;
     }
     this.state = createDefaultComponentState();
-    if (this.mode === 'update') {
-      this.state.formSubStep = 'access_code';
-    }
+    this.applyModeRouting();
     this.render();
   }
 
@@ -459,9 +566,23 @@ export class AllfeatRegister extends HTMLElement {
   // Rendering
   // ============================================
 
+  /**
+   * Class names of internal scrollable regions whose `scrollTop` should survive a re-render.
+   * Without this, every state change (expand a row, toggle Show creators) would jump the user
+   * back to the top of the list because `container.innerHTML = ...` creates fresh elements.
+   */
+  private static readonly SCROLLABLE_CLASSES = ['ats-work-list', 'ats-version-list'] as const;
+
   private render(): void {
     const container = this.shadow.querySelector('.ats-container');
     if (!container) return;
+
+    // Capture scroll positions before the rebuild so they can be restored against the new DOM.
+    const scrollState: Record<string, number> = {};
+    for (const cls of AllfeatRegister.SCROLLABLE_CLASSES) {
+      const el = container.querySelector(`.${cls}`) as HTMLElement | null;
+      if (el) scrollState[cls] = el.scrollTop;
+    }
 
     // Config check
     if (!this.atsUrl) {
@@ -538,6 +659,12 @@ export class AllfeatRegister extends HTMLElement {
           this.state.error?.requestId,
         );
         break;
+      case 'DOWNLOADS':
+        content = renderDownloadListScreen(this.state.workList);
+        break;
+      case 'DOWNLOAD_DETAIL':
+        content = renderDownloadDetailScreen(this.state.versionList);
+        break;
     }
 
     // Overlay for token expired
@@ -546,19 +673,39 @@ export class AllfeatRegister extends HTMLElement {
     }
 
     container.innerHTML = content;
+
+    // Restore scroll positions on any scrollable region that still exists after the rebuild.
+    // The class-keyed map naturally skips regions that disappeared (e.g. on screen transitions)
+    // without trying to forcibly carry scroll across unrelated lists.
+    for (const cls of AllfeatRegister.SCROLLABLE_CLASSES) {
+      const top = scrollState[cls];
+      if (top == null) continue;
+      const el = container.querySelector(`.${cls}`) as HTMLElement | null;
+      if (el) el.scrollTop = top;
+    }
   }
 
   private renderFormScreen(): string {
     const { formSubStep, formState, formErrors } = this.state;
 
-    let content = renderStepIndicator(formSubStep, this.mode);
+    let content = renderStepIndicator(formSubStep, this.mode, this.hasExternalUser);
+
+    // The existing-filename hint for FILE / REVIEW steps comes from either the
+    // selected user-scoped work (new flow) OR the access-code-fetched work (legacy).
+    const existingFilename = this.state.selectedWork?.assetFilename ?? this.state.accessData?.assetFilename ?? null;
+    const accessDataForReview: AccessData | null = this.state.accessData ?? this.selectedWorkAsAccessData();
 
     switch (formSubStep) {
       case 'access_code':
         content += renderAccessCodeStep(formState.accessCode, { accessCode: formErrors.accessCode }, this.state.submitting);
         break;
+      case 'work_select':
+        content += renderWorkSelectorStep(this.state.workList, {
+          generalError: formErrors.general ?? null,
+        });
+        break;
       case 'file':
-        content += renderFileStep(formState, this.mode, this.maxFileSize, { file: formErrors.file }, this.state.accessData?.assetFilename);
+        content += renderFileStep(formState, this.mode, this.maxFileSize, { file: formErrors.file }, existingFilename);
         break;
       case 'title':
         content += renderTitleStep(formState, formErrors.title ? { title: formErrors.title } : {});
@@ -570,11 +717,27 @@ export class AllfeatRegister extends HTMLElement {
         );
         break;
       case 'review':
-        content += renderReviewStep(formState, this.mode, this.state.submitting, this.state.accessData);
+        content += renderReviewStep(formState, this.mode, this.state.submitting, accessDataForReview);
         break;
     }
 
     return content;
+  }
+
+  /** Adapts the selected user-scoped work into the shape `renderReviewStep` expects. */
+  private selectedWorkAsAccessData(): AccessData | null {
+    const w = this.state.selectedWork;
+    if (!w) return null;
+    return {
+      atsId: w.atsId,
+      title: w.title,
+      network: this.network,
+      ownerAddress: w.owner,
+      latestVersion: w.latestVersion,
+      latestCommitment: w.latestCommitment,
+      createdAt: w.createdAt,
+      assetFilename: w.assetFilename,
+    };
   }
 
   // ============================================
@@ -656,6 +819,69 @@ export class AllfeatRegister extends HTMLElement {
             }
             return;
           }
+          case 'toggle-work': {
+            const id = actionEl.dataset.workId;
+            if (!id) return;
+            this.state.workList.expandedId = this.state.workList.expandedId === id ? null : id;
+            this.render();
+            return;
+          }
+          case 'select-work': {
+            const id = actionEl.dataset.workId;
+            if (id) this.handleSelectWork(id);
+            return;
+          }
+          case 'load-more-works':
+            this.loadUserWorks({ append: true });
+            return;
+          case 'reload-works':
+            this.loadUserWorks();
+            return;
+          case 'open-work-detail': {
+            const id = actionEl.dataset.workId;
+            if (!id) return;
+            this.openWorkDetail(id);
+            return;
+          }
+          case 'back-to-list':
+            this.backToDownloadList();
+            return;
+          case 'reload-versions':
+            if (this.state.versionList.work) {
+              this.loadWorkVersions(this.state.versionList.work.id);
+            }
+            return;
+          case 'download-version-asset': {
+            const v = parseInt(actionEl.dataset.version || '');
+            if (Number.isFinite(v)) this.handleDownloadVersionAsset(v);
+            return;
+          }
+          case 'download-version-cert': {
+            const v = parseInt(actionEl.dataset.version || '');
+            if (Number.isFinite(v)) this.handleDownloadVersionCert(v);
+            return;
+          }
+          case 'toggle-version-creators': {
+            const v = parseInt(actionEl.dataset.version || '');
+            if (Number.isFinite(v)) this.toggleVersionCreators(v);
+            return;
+          }
+          case 'toggle-work-creators': {
+            const id = actionEl.dataset.workId;
+            if (id) this.toggleWorkCreators(id);
+            return;
+          }
+          case 'copy-hash': {
+            const value = actionEl.dataset.value;
+            if (!value) return;
+            // No re-render — we only flip a class on the live button so the rest of the
+            // DOM (including scroll position) stays untouched.
+            navigator.clipboard.writeText(value).then(() => {
+              actionEl.classList.add('copied');
+              setTimeout(() => actionEl.classList.remove('copied'), 1200);
+            }).catch(() => {});
+            return;
+          }
         }
       }
 
@@ -678,6 +904,21 @@ export class AllfeatRegister extends HTMLElement {
 
       if (target.id === 'title') {
         this.state.formState.title = target.value;
+        return;
+      }
+
+      if (target.id === 'work-search') {
+        this.state.workList.search = target.value;
+        // The renderer client-side filters loaded rows for instant feedback while
+        // the user types. After 300 ms idle, refire the listing server-side so we
+        // also surface works on pages we haven't loaded yet. `quiet: true` keeps the
+        // current rows visible during the fetch instead of flashing a spinner.
+        this.render();
+        if (this.searchDebounceTimeout) clearTimeout(this.searchDebounceTimeout);
+        this.searchDebounceTimeout = setTimeout(() => {
+          this.searchDebounceTimeout = null;
+          this.loadUserWorks({ quiet: true });
+        }, 300);
         return;
       }
 
@@ -789,6 +1030,19 @@ export class AllfeatRegister extends HTMLElement {
   private async handleNext(): Promise<void> {
     if (!this.validateCurrentStep()) return;
 
+    // From work_select, advance to file step (no API call yet — the version endpoints
+    // are called on Submit from the review step).
+    if (this.state.formSubStep === 'work_select') {
+      this.state.formSubStep = 'file';
+      this.state.formErrors = {};
+      // Apply max-file-size for the current network now that we've chosen a work.
+      if (this.atsUrl && this.state.selectedWork) {
+        this.fetchAndApplyStats(this.atsUrl, this.network);
+      }
+      this.render();
+      return;
+    }
+
     if (this.state.formSubStep === 'access_code' && this.mode === 'update') {
       const accessCode = this.state.formState.accessCode.trim();
 
@@ -860,7 +1114,7 @@ export class AllfeatRegister extends HTMLElement {
   }
 
   private getSubSteps(): FormSubStep[] {
-    return getFormSteps(this.mode).map(s => s.id);
+    return getFormSteps(this.mode, this.hasExternalUser).map(s => s.id);
   }
 
   private validateCurrentStep(): boolean {
@@ -933,6 +1187,16 @@ export class AllfeatRegister extends HTMLElement {
         }
         break;
       }
+
+      case 'work_select': {
+        if (!this.state.selectedWork) {
+          this.state.formErrors = { general: 'Please select a work to update.' };
+          this.render();
+          this.scrollToFirstError();
+          return false;
+        }
+        break;
+      }
     }
 
     return true;
@@ -958,8 +1222,17 @@ export class AllfeatRegister extends HTMLElement {
     this.state.trackingProgress = 0;
 
     if (this.mode === 'update') {
-      this.state.formSubStep = 'access_code';
-      this.state.accessData = null;
+      if (this.hasExternalUser) {
+        this.state.formSubStep = 'work_select';
+        this.state.selectedWork = null;
+        // Reload the works list if we don't have it cached.
+        if (this.state.workList.works.length === 0) {
+          this.loadUserWorks();
+        }
+      } else {
+        this.state.formSubStep = 'access_code';
+        this.state.accessData = null;
+      }
     } else {
       this.state.formSubStep = 'review';
     }
@@ -1077,6 +1350,15 @@ export class AllfeatRegister extends HTMLElement {
   // ============================================
 
   private async executeUpdateFlow(formState: typeof this.state.formState): Promise<void> {
+    if (this.hasExternalUser) {
+      await this.executeUpdateFlowByWorkId(formState);
+    } else {
+      await this.executeUpdateFlowByAccessCode(formState);
+    }
+  }
+
+  /** Legacy update path: uses access code as authorization for each version endpoint. */
+  private async executeUpdateFlowByAccessCode(formState: typeof this.state.formState): Promise<void> {
     const creators = this.mapCreators(formState);
     const file = formState.file;
     const accessCode = formState.accessCode.trim();
@@ -1127,6 +1409,62 @@ export class AllfeatRegister extends HTMLElement {
     await this.waitForTransaction(confirmResponse.ws_url, confirmResponse.status_url);
   }
 
+  /** New update path: uses (externalUserId, workId) to authorize each version endpoint. */
+  private async executeUpdateFlowByWorkId(formState: typeof this.state.formState): Promise<void> {
+    const work = this.state.selectedWork;
+    if (!work) {
+      this.transitionToFailed('No work selected for update.', null, 'widget.no_work_selected');
+      return;
+    }
+    const userId = this.externalUserId;
+    if (!userId) {
+      this.transitionToFailed('No external user id provided.', null, 'widget.missing_external_user_id');
+      return;
+    }
+
+    const creators = this.mapCreators(formState);
+    const file = formState.file;
+    let jobId: string;
+
+    if (file) {
+      const initResponse = await initUserWorkVersionUpload(
+        this.atsUrl, this.token, this.siteKey, userId, work.id,
+        { creators, filename: file.name },
+      );
+      jobId = initResponse.job_id;
+      this.state.jobId = jobId;
+      this.state.uploadUrl = initResponse.upload_url;
+      await this.performUpload(initResponse.upload_url, file);
+    } else {
+      const initResponse = await initUserWorkVersion(
+        this.atsUrl, this.token, this.siteKey, userId, work.id,
+        { creators },
+      );
+      jobId = initResponse.job_id;
+      this.state.jobId = jobId;
+    }
+
+    this.state.screen = 'CONFIRMING';
+    this.render();
+
+    await prepareUserWorkVersion(
+      this.atsUrl, this.token, this.siteKey, userId, work.id,
+      { job_id: jobId },
+    );
+
+    const confirmResponse = await confirmUserWorkVersion(
+      this.atsUrl, this.token, this.siteKey, userId, work.id,
+      { job_id: jobId },
+    );
+
+    this.state.transactionId = confirmResponse.transaction_id;
+    this.state.workId = work.id;
+    dispatchConfirmed(this, { transactionId: confirmResponse.transaction_id });
+
+    this.transitionToScreen('TRACKING');
+    await this.waitForTransaction(confirmResponse.ws_url, confirmResponse.status_url);
+  }
+
   // ============================================
   // Helpers
   // ============================================
@@ -1142,6 +1480,60 @@ export class AllfeatRegister extends HTMLElement {
       createdAt: result.created_at,
       assetFilename: result.asset_filename,
     };
+  }
+
+  /** Convert the wire-format `UserWork` to the camelCase `SelectedWork` used in state. */
+  private mapUserWork(api: UserWork): SelectedWork {
+    return {
+      id: api.id,
+      atsId: api.ats_id,
+      owner: api.owner,
+      latestVersion: api.latest_version,
+      latestCommitment: api.latest_commitment,
+      createdAt: api.created_at,
+      updatedAt: api.updated_at ?? api.created_at,
+      title: api.title ?? '',
+      assetFilename: api.asset_filename,
+      hasFiles: api.has_files,
+    };
+  }
+
+  /** Convert the wire-format `WorkVersionApi` to the camelCase `WorkVersion` used in state. */
+  private mapWorkVersion(api: WorkVersionApi): WorkVersion {
+    return {
+      version: api.version,
+      commitment: api.commitment,
+      assetFilename: api.asset_filename ?? null,
+      registeredAt: api.registered_at ?? null,
+      registeredAtBlock: api.registered_at_block ?? null,
+      mediaHash: api.media_hash ?? null,
+      merkleRoot: api.merkle_root ?? null,
+      blockHash: api.block_hash ?? null,
+      txHash: api.tx_hash ?? null,
+      feeCredits: api.fee_credits ?? null,
+      storageFeeCredits: api.storage_fee_credits ?? null,
+    };
+  }
+
+  /** Convert the wire-format `WorkCreatorResponse` to camelCase. */
+  private mapWorkCreator(api: WorkCreatorResponse): WorkCreator {
+    return {
+      fullName: api.full_name,
+      email: api.email ?? null,
+      roles: api.roles ?? [],
+      ipi: api.ipi ?? null,
+      isni: api.isni ?? null,
+    };
+  }
+
+  /** Defense-in-depth: sort by `updatedAt` desc so newest works surface first, regardless of backend ordering. */
+  private sortByUpdatedAtDesc(works: SelectedWork[]): SelectedWork[] {
+    return [...works].sort((a, b) => {
+      if (a.updatedAt === b.updatedAt) return 0;
+      if (a.updatedAt == null) return 1;
+      if (b.updatedAt == null) return -1;
+      return a.updatedAt < b.updatedAt ? 1 : -1;
+    });
   }
 
   private mapCreators(formState: typeof this.state.formState): CreatorRequest[] {
@@ -1167,6 +1559,380 @@ export class AllfeatRegister extends HTMLElement {
     if (this.pollingCleanup) {
       this.pollingCleanup();
       this.pollingCleanup = null;
+    }
+  }
+
+  // ============================================
+  // User-Scoped Works (external-user-id)
+  // ============================================
+
+  /**
+   * Fetch (or page through) the external user's works into `state.workList`.
+   * @param opts.append - Append to the existing list instead of replacing (used by "Load more").
+   * @param opts.quiet - Don't flash a loading spinner when we already have a list (used by search debounce).
+   */
+  private async loadUserWorks(opts: { append?: boolean; quiet?: boolean } = {}): Promise<void> {
+    if (!this.externalUserId) return;
+    if (!this.atsUrl || !this.token || !this.siteKey) return;
+
+    const hasExistingWorks = this.state.workList.works.length > 0;
+    if (!opts.quiet || !hasExistingWorks) {
+      this.state.workList.status = 'loading';
+    }
+    this.state.workList.error = null;
+    if (!opts.append && !opts.quiet) {
+      this.state.workList.works = [];
+      this.state.workList.endCursor = null;
+      this.state.workList.hasNextPage = false;
+    }
+    this.render();
+
+    try {
+      const search = this.state.workList.search.trim() || null;
+      const response = await listUserWorks(
+        this.atsUrl,
+        this.token,
+        this.siteKey,
+        this.externalUserId,
+        {
+          network: this.network,
+          first: 50,
+          after: opts.append ? this.state.workList.endCursor : null,
+          search,
+        },
+      );
+      const mapped = response.works.map(w => this.mapUserWork(w));
+      const merged = opts.append ? [...this.state.workList.works, ...mapped] : mapped;
+      this.state.workList.works = this.sortByUpdatedAtDesc(merged);
+      this.state.workList.endCursor = response.page_info.end_cursor;
+      this.state.workList.hasNextPage = response.page_info.has_next_page;
+      this.state.workList.status = 'loaded';
+      this.render();
+    } catch (error) {
+      const e = error as WidgetError;
+      this.state.workList.status = 'error';
+      this.state.workList.error = e.kind === 'api'
+        ? getErrorMessage(e.error.code, e.error.details)
+        : 'Failed to load works. Please try again.';
+      this.render();
+      // For auth/config-level errors, also route through the global handler.
+      if (e.kind === 'api') {
+        const code = e.error.code;
+        const authCodes = ['session.invalid_token', 'common.auth.missing_token', 'common.auth.expired', 'common.auth.invalid_token'];
+        if (authCodes.includes(code)) {
+          this.handleError(e, this.mode === 'download' ? 'download_list' : 'work_select');
+        }
+      }
+    }
+  }
+
+  /**
+   * Navigate from the DOWNLOADS list to the DOWNLOAD_DETAIL screen for a single work and
+   * kick off the versions load. Reuses any cached `SelectedWork` from the list so the
+   * header renders instantly while the versions fetch is in flight.
+   */
+  private openWorkDetail(workId: string): void {
+    const work = this.state.workList.works.find(w => w.id === workId) ?? null;
+    this.state.versionList = createDefaultVersionListState();
+    this.state.versionList.work = work;
+    this.state.screen = 'DOWNLOAD_DETAIL';
+    this.render();
+    if (work) this.loadWorkVersions(workId);
+  }
+
+  /** Navigate back to the DOWNLOADS list, preserving the cached list state. */
+  private backToDownloadList(): void {
+    this.state.versionList = createDefaultVersionListState();
+    this.state.screen = 'DOWNLOADS';
+    this.render();
+  }
+
+  /** Fetch the full version history of a single work. */
+  private async loadWorkVersions(workId: string): Promise<void> {
+    if (!this.externalUserId) return;
+    if (!this.atsUrl || !this.token || !this.siteKey) return;
+
+    this.state.versionList.status = 'loading';
+    this.state.versionList.error = null;
+    this.render();
+
+    try {
+      const response = await listUserWorkVersions(
+        this.atsUrl, this.token, this.siteKey, this.externalUserId, workId, this.network,
+      );
+      this.state.versionList.versions = response.versions.map(v => this.mapWorkVersion(v));
+      this.state.versionList.status = 'loaded';
+      this.render();
+    } catch (error) {
+      const e = error as WidgetError;
+      this.state.versionList.status = 'error';
+      this.state.versionList.error = e.kind === 'api'
+        ? getErrorMessage(e.error.code, e.error.details)
+        : 'Failed to load versions. Please try again.';
+      this.render();
+      if (e.kind === 'api') {
+        const code = e.error.code;
+        const authCodes = ['session.invalid_token', 'common.auth.missing_token', 'common.auth.expired', 'common.auth.invalid_token'];
+        if (authCodes.includes(code)) {
+          this.handleError(e, 'version_list');
+        }
+      }
+    }
+  }
+
+  private async handleDownloadVersionAsset(version: number): Promise<void> {
+    const work = this.state.versionList.work;
+    if (!work || !this.externalUserId) return;
+    if (this.state.versionList.downloading[version]) return;
+    this.state.versionList.downloading = { ...this.state.versionList.downloading, [version]: 'asset' };
+    this.render();
+    dispatchDownloadStarted(this, { workId: work.id, kind: 'asset' });
+    try {
+      const { url } = await downloadUserWorkVersionAsset(
+        this.atsUrl, this.token, this.siteKey, this.externalUserId, work.id, version,
+      );
+      openPresignedDownload(url);
+      dispatchDownloadComplete(this, { workId: work.id, kind: 'asset' });
+    } catch (error) {
+      const e = error as WidgetError;
+      const message = e.kind === 'api'
+        ? getErrorMessage(e.error.code, e.error.details)
+        : 'Download failed.';
+      dispatchDownloadFailed(this, { workId: work.id, kind: 'asset', message });
+      if (e.kind === 'api') {
+        const code = e.error.code;
+        const authCodes = ['session.invalid_token', 'common.auth.missing_token', 'common.auth.expired', 'common.auth.invalid_token'];
+        if (authCodes.includes(code)) {
+          this.handleError(e, 'download_version_asset');
+        }
+      }
+    } finally {
+      this.state.versionList.downloading = { ...this.state.versionList.downloading, [version]: null };
+      this.render();
+    }
+  }
+
+  /** Normalize an API role string to the widget's capitalized role names (e.g. `"author"` → `"Author"`). */
+  private normalizeRoleName(role: string): string {
+    return role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+  }
+
+  /**
+   * Fetch the latest version's creators for prefill. Reuses the work-selector cache
+   * (populated by "Show creators") when available so we don't double-fetch.
+   */
+  private async fetchWorkCreatorsForPrefill(work: SelectedWork): Promise<WorkCreator[]> {
+    const cached = this.state.workList.creatorsByWork[work.id];
+    if (cached && cached.status === 'loaded') return cached.creators;
+    if (!this.externalUserId || !this.atsUrl || !this.token || !this.siteKey) return [];
+
+    const response = await listUserWorkVersionCreators(
+      this.atsUrl, this.token, this.siteKey, this.externalUserId, work.id, work.latestVersion, this.network,
+    );
+    const mapped = response.creators.map(c => this.mapWorkCreator(c));
+    // Seed the cache so a later "Show creators" toggle is instant.
+    this.state.workList.creatorsByWork = {
+      ...this.state.workList.creatorsByWork,
+      [work.id]: { status: 'loaded', creators: mapped, error: null },
+    };
+    return mapped;
+  }
+
+  /**
+   * Select a work in the update flow: record it, prefill the form (title + creators from the
+   * latest version), then advance to the file step. The file step already shows the work's
+   * existing filename and lets the user skip to reuse it — that is the "file prefill".
+   *
+   * Creators are fetched before advancing (with a brief loading state on the button) so the
+   * creators step is always populated by the time the user reaches it.
+   */
+  private async handleSelectWork(workId: string): Promise<void> {
+    const work = this.state.workList.works.find(w => w.id === workId);
+    if (!work) return;
+
+    this.state.workList.selectedId = workId;
+    this.state.selectedWork = work;
+    if (work.title) this.state.formState.title = work.title;
+    this.state.formErrors = { ...this.state.formErrors, general: undefined };
+    dispatchWorkSelected(this, { workId: work.id, atsId: work.atsId });
+
+    this.state.workList.selecting = true;
+    this.render();
+
+    try {
+      const creators = await this.fetchWorkCreatorsForPrefill(work);
+      if (creators.length > 0) {
+        this.state.formState.creators = creators.map(c => ({
+          fullName: c.fullName,
+          email: c.email ?? '',
+          roles: c.roles.map(r => this.normalizeRoleName(r)),
+          ipi: c.ipi ?? '',
+          isni: c.isni ?? '',
+        }));
+      }
+    } catch {
+      // Non-fatal: a failed creators fetch just leaves the creators step blank for manual entry.
+    }
+
+    this.state.workList.selecting = false;
+    // Advance to the file step.
+    this.handleNext();
+  }
+
+  /**
+   * Toggle the per-work creators dropdown in the work-selector (update flow). Lazy-fetches
+   * the latest version's creators on first expand; caches the result keyed by work id so
+   * subsequent collapse/expand cycles don't refetch.
+   */
+  private toggleWorkCreators(workId: string): void {
+    const current = this.state.workList.creatorsExpanded[workId] === true;
+    this.state.workList.creatorsExpanded = {
+      ...this.state.workList.creatorsExpanded,
+      [workId]: !current,
+    };
+    this.render();
+    if (!current && !this.state.workList.creatorsByWork[workId]) {
+      this.loadWorkLatestCreators(workId);
+    }
+  }
+
+  /** Fetch the latest version's creators for a single work in the work-selector list. */
+  private async loadWorkLatestCreators(workId: string): Promise<void> {
+    if (!this.externalUserId) return;
+    if (!this.atsUrl || !this.token || !this.siteKey) return;
+    const work = this.state.workList.works.find(w => w.id === workId);
+    if (!work) return;
+
+    this.state.workList.creatorsByWork = {
+      ...this.state.workList.creatorsByWork,
+      [workId]: { status: 'loading', creators: [], error: null },
+    };
+    this.render();
+
+    try {
+      const response = await listUserWorkVersionCreators(
+        this.atsUrl, this.token, this.siteKey, this.externalUserId, workId, work.latestVersion, this.network,
+      );
+      this.state.workList.creatorsByWork = {
+        ...this.state.workList.creatorsByWork,
+        [workId]: {
+          status: 'loaded',
+          creators: response.creators.map(c => this.mapWorkCreator(c)),
+          error: null,
+        },
+      };
+      this.render();
+    } catch (error) {
+      const e = error as WidgetError;
+      const message = e.kind === 'api'
+        ? getErrorMessage(e.error.code, e.error.details)
+        : 'Failed to load creators. Please try again.';
+      this.state.workList.creatorsByWork = {
+        ...this.state.workList.creatorsByWork,
+        [workId]: { status: 'error', creators: [], error: message },
+      };
+      this.render();
+      if (e.kind === 'api') {
+        const code = e.error.code;
+        const authCodes = ['session.invalid_token', 'common.auth.missing_token', 'common.auth.expired', 'common.auth.invalid_token'];
+        if (authCodes.includes(code)) {
+          this.handleError(e, 'work_creators');
+        }
+      }
+    }
+  }
+
+  /**
+   * Toggle the per-version creators dropdown. Lazy-fetches the creator list on the first
+   * expand (the entry is cached afterwards so subsequent collapse/expand cycles don't refetch
+   * — mirroring the dashboard's `has_been_expanded` pattern).
+   */
+  private toggleVersionCreators(version: number): void {
+    const current = this.state.versionList.creatorsExpanded[version] === true;
+    this.state.versionList.creatorsExpanded = {
+      ...this.state.versionList.creatorsExpanded,
+      [version]: !current,
+    };
+    this.render();
+    if (!current && !this.state.versionList.creatorsByVersion[version]) {
+      this.loadVersionCreators(version);
+    }
+  }
+
+  /** Fetch creators for a specific version of the currently-detailed work. */
+  private async loadVersionCreators(version: number): Promise<void> {
+    const work = this.state.versionList.work;
+    if (!work || !this.externalUserId) return;
+    if (!this.atsUrl || !this.token || !this.siteKey) return;
+
+    this.state.versionList.creatorsByVersion = {
+      ...this.state.versionList.creatorsByVersion,
+      [version]: { status: 'loading', creators: [], error: null },
+    };
+    this.render();
+
+    try {
+      const response = await listUserWorkVersionCreators(
+        this.atsUrl, this.token, this.siteKey, this.externalUserId, work.id, version, this.network,
+      );
+      this.state.versionList.creatorsByVersion = {
+        ...this.state.versionList.creatorsByVersion,
+        [version]: {
+          status: 'loaded',
+          creators: response.creators.map(c => this.mapWorkCreator(c)),
+          error: null,
+        },
+      };
+      this.render();
+    } catch (error) {
+      const e = error as WidgetError;
+      const message = e.kind === 'api'
+        ? getErrorMessage(e.error.code, e.error.details)
+        : 'Failed to load creators. Please try again.';
+      this.state.versionList.creatorsByVersion = {
+        ...this.state.versionList.creatorsByVersion,
+        [version]: { status: 'error', creators: [], error: message },
+      };
+      this.render();
+      if (e.kind === 'api') {
+        const code = e.error.code;
+        const authCodes = ['session.invalid_token', 'common.auth.missing_token', 'common.auth.expired', 'common.auth.invalid_token'];
+        if (authCodes.includes(code)) {
+          this.handleError(e, 'version_creators');
+        }
+      }
+    }
+  }
+
+  private async handleDownloadVersionCert(version: number): Promise<void> {
+    const work = this.state.versionList.work;
+    if (!work || !this.externalUserId) return;
+    if (this.state.versionList.downloading[version]) return;
+    this.state.versionList.downloading = { ...this.state.versionList.downloading, [version]: 'certificate' };
+    this.render();
+    dispatchDownloadStarted(this, { workId: work.id, kind: 'certificate' });
+    try {
+      const { url } = await downloadUserWorkVersionCertificate(
+        this.atsUrl, this.token, this.siteKey, this.externalUserId, work.id, version,
+      );
+      openPresignedDownload(url);
+      dispatchDownloadComplete(this, { workId: work.id, kind: 'certificate' });
+    } catch (error) {
+      const e = error as WidgetError;
+      const message = e.kind === 'api'
+        ? getErrorMessage(e.error.code, e.error.details)
+        : 'Download failed.';
+      dispatchDownloadFailed(this, { workId: work.id, kind: 'certificate', message });
+      if (e.kind === 'api') {
+        const code = e.error.code;
+        const authCodes = ['session.invalid_token', 'common.auth.missing_token', 'common.auth.expired', 'common.auth.invalid_token'];
+        if (authCodes.includes(code)) {
+          this.handleError(e, 'download_version_certificate');
+        }
+      }
+    } finally {
+      this.state.versionList.downloading = { ...this.state.versionList.downloading, [version]: null };
+      this.render();
     }
   }
 
@@ -1356,16 +2122,7 @@ export class AllfeatRegister extends HTMLElement {
       const { url } = await downloadCertificate(
         this.atsUrl, this.token, this.siteKey, this.state.workId,
       );
-
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = '';
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      openPresignedDownload(url);
     } catch (error) {
       this.handleError(error as WidgetError, 'download');
     }

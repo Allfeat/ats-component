@@ -16,6 +16,11 @@ export const EVENT_NAMES = {
   FAILED: 'allfeat:failed',
   TOKEN_EXPIRED: 'allfeat:token-expired',
   ERROR: 'allfeat:error',
+  MODE_CHANGED: 'allfeat:mode-changed',
+  WORK_SELECTED: 'allfeat:work-selected',
+  DOWNLOAD_STARTED: 'allfeat:download-started',
+  DOWNLOAD_COMPLETE: 'allfeat:download-complete',
+  DOWNLOAD_FAILED: 'allfeat:download-failed',
 } as const;
 
 // ============================================
@@ -97,6 +102,39 @@ export interface ErrorDetail {
   details?: Record<string, unknown>;
 }
 
+/** Detail for the `allfeat:mode-changed` event, emitted whenever the `mode` attribute changes. */
+export interface ModeChangedDetail {
+  mode: Mode;
+}
+
+/** What kind of file a download action is targeting. */
+export type DownloadKind = 'asset' | 'certificate';
+
+/** Detail for the `allfeat:work-selected` event, emitted when a user picks a work from the work selector. */
+export interface WorkSelectedDetail {
+  workId: string;
+  atsId: number | null;
+}
+
+/** Detail for the `allfeat:download-started` event. */
+export interface DownloadStartedDetail {
+  workId: string;
+  kind: DownloadKind;
+}
+
+/** Detail for the `allfeat:download-complete` event. */
+export interface DownloadCompleteDetail {
+  workId: string;
+  kind: DownloadKind;
+}
+
+/** Detail for the `allfeat:download-failed` event. */
+export interface DownloadFailedDetail {
+  workId: string;
+  kind: DownloadKind;
+  message: string;
+}
+
 // ============================================
 // Helpers
 // ============================================
@@ -150,4 +188,24 @@ export function dispatchTokenExpired(el: HTMLElement, detail: TokenExpiredDetail
 
 export function dispatchError(el: HTMLElement, detail: ErrorDetail): void {
   el.dispatchEvent(createCustomEvent(EVENT_NAMES.ERROR, detail));
+}
+
+export function dispatchModeChanged(el: HTMLElement, detail: ModeChangedDetail): void {
+  el.dispatchEvent(createCustomEvent(EVENT_NAMES.MODE_CHANGED, detail));
+}
+
+export function dispatchWorkSelected(el: HTMLElement, detail: WorkSelectedDetail): void {
+  el.dispatchEvent(createCustomEvent(EVENT_NAMES.WORK_SELECTED, detail));
+}
+
+export function dispatchDownloadStarted(el: HTMLElement, detail: DownloadStartedDetail): void {
+  el.dispatchEvent(createCustomEvent(EVENT_NAMES.DOWNLOAD_STARTED, detail));
+}
+
+export function dispatchDownloadComplete(el: HTMLElement, detail: DownloadCompleteDetail): void {
+  el.dispatchEvent(createCustomEvent(EVENT_NAMES.DOWNLOAD_COMPLETE, detail));
+}
+
+export function dispatchDownloadFailed(el: HTMLElement, detail: DownloadFailedDetail): void {
+  el.dispatchEvent(createCustomEvent(EVENT_NAMES.DOWNLOAD_FAILED, detail));
 }
