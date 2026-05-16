@@ -131,7 +131,7 @@ onMounted(() => {
 });
 
 useHead({
-  title: "Register Your Recordings — Abbey Road Studios",
+  title: "Manage Your Works — Abbey Road Studios",
   link: [
     { rel: "preconnect", href: "https://fonts.googleapis.com" },
     { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" },
@@ -284,11 +284,10 @@ useHead({
     <main class="main-content">
       <div class="page-container">
         <div class="page-header">
-          <p class="eyebrow">Rights Registration</p>
-          <h1 class="page-title">Register Your Recordings</h1>
+          <h1 class="page-title">Manage Your Works</h1>
           <p class="page-subtitle">
-            Protect your master recordings on the Allfeat blockchain — register
-            new works, update existing ones, or download your certificates.
+            Protect new works, update existing ones, or download your assets
+            and certificates
           </p>
 
           <!-- Mode switcher -->
@@ -297,7 +296,7 @@ useHead({
               :class="['mode-btn', { active: activeMode === 'register' }]"
               @click="switchMode('register')"
             >
-              Register
+              Protect
             </button>
             <button
               :class="['mode-btn', { active: activeMode === 'update' }]"
@@ -309,7 +308,7 @@ useHead({
               :class="['mode-btn', { active: activeMode === 'download' }]"
               @click="switchMode('download')"
             >
-              My Recordings
+              My Works
             </button>
           </div>
         </div>
@@ -318,7 +317,7 @@ useHead({
           <!-- Loading spinner while fetching a mode-specific token -->
           <div v-if="loading" class="widget-loading">
             <div class="spinner" />
-            <p>Initializing widget…</p>
+            <p>Initializing widget...</p>
           </div>
 
           <!-- Toggle the wrapper, not the widget: <ats-widget> mutates its own
@@ -439,6 +438,32 @@ useHead({
 </template>
 
 <style>
+/* Abbey Road Studios' own typefaces (mirrors abbeyroad.com/Content/site.min.css):
+   TT-Fors for the brand voice, Maison Neue Mono for nav/footer running text. */
+@font-face {
+  font-family: "TT-Fors";
+  src: url("/fonts/TT-Fors-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "TT-Fors";
+  src: url("/fonts/TT-Fors-DemiBold.otf") format("opentype");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "TT-Fors";
+  src: url("/fonts/TT-Fors-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Maison Neue Mono";
+  src: url("/fonts/maison-neue-mono.otf") format("opentype");
+  font-display: swap;
+}
+
 :root {
   --ar-bg: #d3cdc3;
   --ar-surface: #ffffff;
@@ -456,12 +481,7 @@ useHead({
 }
 
 body {
-  font-family:
-    "Roboto",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font-family: "TT-Fors", Heebo, sans-serif;
   background: var(--ar-bg);
   color: var(--ar-ink);
   min-height: 100vh;
@@ -480,9 +500,9 @@ body {
 }
 
 .ar-header-inner {
-  max-width: 1320px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 8px 32px;
+  padding: 8px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -513,8 +533,8 @@ body {
 }
 
 .ar-nav-item > a {
-  font-family: "Heebo", sans-serif;
-  font-size: 14px;
+  font-family: "Maison Neue Mono", Heebo, sans-serif;
+  font-size: 16px;
   color: #231f20;
   text-decoration: none;
   padding-bottom: 5px;
@@ -599,8 +619,8 @@ body {
   border: 0;
   background: transparent;
   color: #0b282e;
-  font-family: "Heebo", sans-serif;
-  font-size: 14px;
+  font-family: "Maison Neue Mono", Heebo, sans-serif;
+  font-size: 16px;
   width: 110px;
   padding: 6px 2px;
   outline: none;
@@ -608,7 +628,7 @@ body {
 }
 
 .ar-nav-search input:focus {
-  width: 150px;
+  width: 140px;
 }
 
 .ar-nav-search input::-webkit-search-cancel-button {
@@ -643,7 +663,7 @@ body {
 }
 
 .ar-mobile-nav a {
-  font-family: "Heebo", sans-serif;
+  font-family: "Maison Neue Mono", Heebo, sans-serif;
   font-size: 15px;
   color: #231f20;
   text-decoration: none;
@@ -667,20 +687,10 @@ body {
   margin-bottom: 36px;
 }
 
-.eyebrow {
-  font-family: "Heebo", sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--ar-teal-deep);
-  margin-bottom: 14px;
-}
-
 .page-title {
-  font-family: "Heebo", sans-serif;
+  font-family: "TT-Fors", Heebo, sans-serif;
   font-size: 42px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.1;
   letter-spacing: -0.5px;
   color: var(--ar-ink);
@@ -706,7 +716,7 @@ body {
 }
 
 .mode-btn {
-  font-family: "Heebo", sans-serif;
+  font-family: "TT-Fors", Heebo, sans-serif;
   padding: 9px 22px;
   border: none;
   border-radius: 30px;
@@ -809,14 +819,14 @@ ats-widget {
 .ar-footer {
   background: var(--ar-bg);
   color: #000;
-  font-family: "Heebo", sans-serif;
-  padding: 56px 0 28px;
+  font-family: "Maison Neue Mono", Heebo, sans-serif;
+  padding: 60px 0 20px;
 }
 
 .ar-footer-inner {
-  max-width: 1320px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 0 32px;
+  padding: 0 16px;
 }
 
 .ar-footer a {
@@ -834,14 +844,18 @@ ats-widget {
 }
 
 .ar-footer-left {
-  flex: 0 0 56%;
+  flex: 0 0 58%;
 }
 
+/* abbeyroad.com floats the link menu and the social block side by side inside
+   the right column — menu on the left, icons on the far right. */
 .ar-footer-right {
   flex: 1;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 56px;
 }
 
 .ar-footer-logo {
@@ -857,8 +871,7 @@ ats-widget {
 }
 
 .ar-newsletter p {
-  max-width: 430px;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.6;
   margin-bottom: 20px;
 }
@@ -880,13 +893,13 @@ ats-widget {
 }
 
 .ar-footer-social {
+  order: 2;
   text-align: right;
-  margin-bottom: 40px;
 }
 
 .ar-footer-social label {
   display: block;
-  font-size: 14px;
+  font-size: 16px;
   margin-bottom: 12px;
 }
 
@@ -909,12 +922,16 @@ ats-widget {
 
 .ar-footer-menu {
   list-style: none;
-  text-align: right;
-  line-height: 2;
+  text-align: left;
+  line-height: 1.6;
+}
+
+.ar-footer-menu li {
+  white-space: nowrap;
 }
 
 .ar-footer-menu a {
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .ar-footer-bottom {
@@ -952,7 +969,12 @@ ats-widget {
     width: 100%;
   }
   .ar-footer-right {
+    flex-direction: column;
     align-items: flex-start;
+    gap: 30px;
+  }
+  .ar-footer-social {
+    order: 0;
   }
   .ar-footer-social,
   .ar-footer-menu,
