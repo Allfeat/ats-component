@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const url = `${organizationsUrl.replace(/\/+$/, '')}/v1/sessions`;
-  console.log('[BFF /api/musicdash/token] calling Organizations Service:', url);
+  console.log('[BFF /api/abbey-road/token] calling Organizations Service:', url);
 
   try {
     const result = await $fetch(url, {
@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
       },
       body: payload,
     });
-    console.log('[BFF /api/musicdash/token] success');
+    console.log('[BFF /api/abbey-road/token] success');
     if (allowedNetwork) {
       return { ...(result as Record<string, unknown>), network: allowedNetwork };
     }
@@ -55,7 +55,7 @@ export default defineEventHandler(async (event) => {
     } else if (err.message) {
       message = err.message;
     }
-    console.error('[BFF /api/musicdash/token] upstream error:', status, message);
+    console.error('[BFF /api/abbey-road/token] upstream error:', status, message);
     throw createError({ statusCode: status, message: String(message) });
   }
 });

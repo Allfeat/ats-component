@@ -64,7 +64,7 @@ The component talks to an ATS API backend (`ats-url` attribute). Demo apps use N
 
 Single Nuxt 3 app in `demo/` (port 3000) with two pages:
 - `/` — Dev console with config UI, event log, and code examples
-- `/musicdash/` — Production-pattern MusicDash integration with BFF token flow
+- `/abbey-road` — Production-pattern integration cloning the Abbey Road Studios site, with BFF token flow
 
 Docker support (`demo/Dockerfile`, `demo/docker-compose.dev.yml`) for containerized deployment.
 

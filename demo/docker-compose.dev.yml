@@ -1,5 +1,5 @@
 services:
-  demo-musicdash:
+  demo-abbey-road:
     build:
       context: ..
       dockerfile: demo/Dockerfile
