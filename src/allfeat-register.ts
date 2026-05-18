@@ -13,8 +13,6 @@ import {
   subscribeToTransaction,
   pollTransactionStatus,
   listUserWorks,
-  listUserWorkVersions,
-  listUserWorkVersionCreators,
   downloadUserWorkVersionAsset,
   downloadUserWorkVersionCertificate,
   initUserWorkVersionUpload,
@@ -90,6 +88,7 @@ import {
   DEFAULT_PRIMARY_COLOR,
   DEFAULT_MAX_FILE_SIZE_BYTES,
   TOKEN_EXPIRY_TIMEOUT_MS,
+  TOKEN_REFRESH_MIN_INTERVAL_MS,
   UPLOAD_MAX_RETRIES,
   POLLING_INTERVAL_MS,
   POLLING_TIMEOUT_MS,
@@ -107,13 +106,15 @@ import styles from './styles/component.css';
 // ============================================
 
 export class AllfeatRegister extends HTMLElement {
-  static observedAttributes = ['site-key', 'token', 'ats-url', 'network', 'mode', 'max-file-size', 'external-user-id'];
+  static observedAttributes = ['site-key', 'token', 'ats-url', 'proxy-url', 'network', 'mode', 'max-file-size', 'external-user-id'];
 
   private shadow: ShadowRoot;
   private state: ComponentState;
   private wsCleanup: WebSocket | null = null;
   private pollingCleanup: (() => void) | null = null;
   private tokenExpiryTimeout: ReturnType<typeof setTimeout> | null = null;
+  /** Timestamp of the last `allfeat:token-expired` dispatch — used to detect a refresh→retry loop. */
+  private lastTokenExpiredAt = 0;
   private searchDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
   private pendingStage: string | null = null;
   private _maxFileSize: number = DEFAULT_MAX_FILE_SIZE_BYTES;
@@ -138,6 +139,15 @@ export class AllfeatRegister extends HTMLElement {
 
   get atsUrl(): string {
     return this.getAttribute('ats-url') || '';
+  }
+
+  /**
+   * Host BFF proxy base URL for the user-scoped works flows (download + update).
+   * The host's backend forwards these calls to the ATS B2B endpoints, injecting
+   * its organization API key — a secret that must never reach the browser.
+   */
+  get proxyUrl(): string {
+    return this.getAttribute('proxy-url') || '';
   }
 
   get network(): Network {
@@ -249,15 +259,6 @@ export class AllfeatRegister extends HTMLElement {
             && (this.state.screen === 'DOWNLOADS'
                 || (this.state.screen === 'FORM' && this.state.formSubStep === 'work_select'));
           if (needsLoad) this.loadUserWorks();
-          // Same lazy-load for the per-work versions list when entering DOWNLOAD_DETAIL.
-          const needsVersionLoad = newValue
-            && this.hasExternalUser
-            && this.state.screen === 'DOWNLOAD_DETAIL'
-            && this.state.versionList.work
-            && this.state.versionList.status === 'idle';
-          if (needsVersionLoad && this.state.versionList.work) {
-            this.loadWorkVersions(this.state.versionList.work.id);
-          }
           this.render();
         }
         break;
@@ -290,6 +291,20 @@ export class AllfeatRegister extends HTMLElement {
             this.state.workList.status = 'error';
             this.state.workList.error = 'Download mode requires an external-user-id attribute.';
           }
+        }
+        this.render();
+        break;
+
+      case 'proxy-url':
+        // The user-scoped flows reach the ATS through the host BFF proxy. If
+        // the proxy URL is set after `mode`/`external-user-id`, kick off any
+        // list load that was deferred because the proxy wasn't configured yet.
+        if (newValue
+            && this.hasExternalUser
+            && this.state.workList.status === 'idle'
+            && (this.state.screen === 'DOWNLOADS'
+                || (this.state.screen === 'FORM' && this.state.formSubStep === 'work_select'))) {
+          this.loadUserWorks();
         }
         this.render();
         break;
@@ -394,6 +409,32 @@ export class AllfeatRegister extends HTMLElement {
   // ============================================
 
   private handleTokenExpired(stage: string): void {
+    // Loop guard: if a token-expired event recurs within
+    // TOKEN_REFRESH_MIN_INTERVAL_MS, the host just handed us a fresh token and
+    // it was rejected too — the token is persistently invalid (e.g. a site-key
+    // mismatch), not merely expired. Refreshing again would only hammer the
+    // backend (and trip its rate limiter), so fail fast instead.
+    const now = Date.now();
+    if (
+      this.lastTokenExpiredAt !== 0 &&
+      now - this.lastTokenExpiredAt < TOKEN_REFRESH_MIN_INTERVAL_MS
+    ) {
+      this.lastTokenExpiredAt = 0;
+      this.state.tokenExpiredPending = false;
+      this.pendingStage = null;
+      if (this.tokenExpiryTimeout) {
+        clearTimeout(this.tokenExpiryTimeout);
+        this.tokenExpiryTimeout = null;
+      }
+      this.transitionToFailed(
+        'Authentication failed: the session token was rejected. Please reload the page and try again.',
+        null,
+        'widget.auth_retry_exhausted',
+      );
+      return;
+    }
+    this.lastTokenExpiredAt = now;
+
     this.state.tokenExpiredPending = true;
     this.pendingStage = stage;
     this.render();
@@ -845,11 +886,6 @@ export class AllfeatRegister extends HTMLElement {
           }
           case 'back-to-list':
             this.backToDownloadList();
-            return;
-          case 'reload-versions':
-            if (this.state.versionList.work) {
-              this.loadWorkVersions(this.state.versionList.work.id);
-            }
             return;
           case 'download-version-asset': {
             const v = parseInt(actionEl.dataset.version || '');
@@ -1308,10 +1344,18 @@ export class AllfeatRegister extends HTMLElement {
 
     const creators = this.mapCreators(formState);
 
-    // Step 1: Init
+    // Step 1: Init. When the host configured an external user id, tag the work
+    // with it so the registration surfaces in that user's download / update
+    // lists afterwards. Omitted otherwise (the field is optional server-side).
     const initResponse = await initWork(
       this.atsUrl, this.token, this.siteKey,
-      { title: formState.title, creators, filename: file.name, network: this.network },
+      {
+        title: formState.title,
+        creators,
+        filename: file.name,
+        network: this.network,
+        external_user_ref: this.externalUserId ?? undefined,
+      },
     );
 
     this.state.jobId = initResponse.job_id;
@@ -1409,27 +1453,36 @@ export class AllfeatRegister extends HTMLElement {
     await this.waitForTransaction(confirmResponse.ws_url, confirmResponse.status_url);
   }
 
-  /** New update path: uses (externalUserId, workId) to authorize each version endpoint. */
+  /**
+   * Update path for the external-user flow. The ATS B2B version endpoints are
+   * keyed by the work's numeric ATS id and scoped to the organization (the
+   * host BFF proxy injects the API key + org), so each call is authorized by
+   * `work.atsId` rather than an access code.
+   */
   private async executeUpdateFlowByWorkId(formState: typeof this.state.formState): Promise<void> {
     const work = this.state.selectedWork;
     if (!work) {
       this.transitionToFailed('No work selected for update.', null, 'widget.no_work_selected');
       return;
     }
-    const userId = this.externalUserId;
-    if (!userId) {
-      this.transitionToFailed('No external user id provided.', null, 'widget.missing_external_user_id');
+    if (!this.externalUserId || !this.proxyUrl) {
+      this.transitionToFailed(
+        'Update is not configured: a proxy URL and external user id are required.',
+        null,
+        'widget.update_not_configured',
+      );
       return;
     }
 
     const creators = this.mapCreators(formState);
     const file = formState.file;
+    const network = this.network;
     let jobId: string;
 
     if (file) {
       const initResponse = await initUserWorkVersionUpload(
-        this.atsUrl, this.token, this.siteKey, userId, work.id,
-        { creators, filename: file.name },
+        this.proxyUrl, this.token, this.siteKey, work.atsId,
+        { creators, filename: file.name, network },
       );
       jobId = initResponse.job_id;
       this.state.jobId = jobId;
@@ -1437,8 +1490,8 @@ export class AllfeatRegister extends HTMLElement {
       await this.performUpload(initResponse.upload_url, file);
     } else {
       const initResponse = await initUserWorkVersion(
-        this.atsUrl, this.token, this.siteKey, userId, work.id,
-        { creators },
+        this.proxyUrl, this.token, this.siteKey, work.atsId,
+        { creators, network },
       );
       jobId = initResponse.job_id;
       this.state.jobId = jobId;
@@ -1448,12 +1501,12 @@ export class AllfeatRegister extends HTMLElement {
     this.render();
 
     await prepareUserWorkVersion(
-      this.atsUrl, this.token, this.siteKey, userId, work.id,
+      this.proxyUrl, this.token, this.siteKey, work.atsId,
       { job_id: jobId },
     );
 
     const confirmResponse = await confirmUserWorkVersion(
-      this.atsUrl, this.token, this.siteKey, userId, work.id,
+      this.proxyUrl, this.token, this.siteKey, work.atsId,
       { job_id: jobId },
     );
 
@@ -1482,19 +1535,35 @@ export class AllfeatRegister extends HTMLElement {
     };
   }
 
-  /** Convert the wire-format `UserWork` to the camelCase `SelectedWork` used in state. */
+  /**
+   * Convert the wire-format `UserWork` to the camelCase `SelectedWork` used in state.
+   *
+   * The B2B listing embeds the version history but omits a couple of
+   * dashboard-style fields (`owner`, `has_files`). The widget derives
+   * `latestCommitment`, `updatedAt` and `assetFilename` from the inline
+   * versions (latest wins) and falls back sensibly for the rest — `hasFiles`
+   * defaults to `true` so the download buttons stay enabled (a missing file
+   * surfaces as a 404 on click).
+   */
   private mapUserWork(api: UserWork): SelectedWork {
+    const versions = (api.versions ?? []).map(v => this.mapWorkVersion(v));
+    // Versions arrive oldest-first; the highest version carries the current state.
+    const latest = versions.reduce<WorkVersion | null>(
+      (acc, v) => (acc === null || v.version > acc.version ? v : acc),
+      null,
+    );
     return {
       id: api.id,
-      atsId: api.ats_id,
-      owner: api.owner,
+      atsId: api.ats_id ?? -1,
+      owner: '',
       latestVersion: api.latest_version,
-      latestCommitment: api.latest_commitment,
+      latestCommitment: latest?.commitment ?? null,
       createdAt: api.created_at,
-      updatedAt: api.updated_at ?? api.created_at,
+      updatedAt: latest?.registeredAt ?? api.created_at,
       title: api.title ?? '',
-      assetFilename: api.asset_filename,
-      hasFiles: api.has_files,
+      assetFilename: latest?.assetFilename ?? null,
+      hasFiles: true,
+      versions,
     };
   }
 
@@ -1512,6 +1581,7 @@ export class AllfeatRegister extends HTMLElement {
       txHash: api.tx_hash ?? null,
       feeCredits: api.fee_credits ?? null,
       storageFeeCredits: api.storage_fee_credits ?? null,
+      creators: (api.creators ?? []).map(c => this.mapWorkCreator(c)),
     };
   }
 
@@ -1573,7 +1643,7 @@ export class AllfeatRegister extends HTMLElement {
    */
   private async loadUserWorks(opts: { append?: boolean; quiet?: boolean } = {}): Promise<void> {
     if (!this.externalUserId) return;
-    if (!this.atsUrl || !this.token || !this.siteKey) return;
+    if (!this.proxyUrl) return;
 
     const hasExistingWorks = this.state.workList.works.length > 0;
     if (!opts.quiet || !hasExistingWorks) {
@@ -1590,7 +1660,7 @@ export class AllfeatRegister extends HTMLElement {
     try {
       const search = this.state.workList.search.trim() || null;
       const response = await listUserWorks(
-        this.atsUrl,
+        this.proxyUrl,
         this.token,
         this.siteKey,
         this.externalUserId,
@@ -1627,17 +1697,20 @@ export class AllfeatRegister extends HTMLElement {
   }
 
   /**
-   * Navigate from the DOWNLOADS list to the DOWNLOAD_DETAIL screen for a single work and
-   * kick off the versions load. Reuses any cached `SelectedWork` from the list so the
-   * header renders instantly while the versions fetch is in flight.
+   * Navigate from the DOWNLOADS list to the DOWNLOAD_DETAIL screen for a single
+   * work. The B2B listing already embeds the full version history, so the
+   * versions come straight from the cached `SelectedWork` — no extra fetch.
    */
   private openWorkDetail(workId: string): void {
     const work = this.state.workList.works.find(w => w.id === workId) ?? null;
     this.state.versionList = createDefaultVersionListState();
     this.state.versionList.work = work;
+    if (work) {
+      this.state.versionList.versions = work.versions;
+      this.state.versionList.status = 'loaded';
+    }
     this.state.screen = 'DOWNLOAD_DETAIL';
     this.render();
-    if (work) this.loadWorkVersions(workId);
   }
 
   /** Navigate back to the DOWNLOADS list, preserving the cached list state. */
@@ -1645,39 +1718,6 @@ export class AllfeatRegister extends HTMLElement {
     this.state.versionList = createDefaultVersionListState();
     this.state.screen = 'DOWNLOADS';
     this.render();
-  }
-
-  /** Fetch the full version history of a single work. */
-  private async loadWorkVersions(workId: string): Promise<void> {
-    if (!this.externalUserId) return;
-    if (!this.atsUrl || !this.token || !this.siteKey) return;
-
-    this.state.versionList.status = 'loading';
-    this.state.versionList.error = null;
-    this.render();
-
-    try {
-      const response = await listUserWorkVersions(
-        this.atsUrl, this.token, this.siteKey, this.externalUserId, workId, this.network,
-      );
-      this.state.versionList.versions = response.versions.map(v => this.mapWorkVersion(v));
-      this.state.versionList.status = 'loaded';
-      this.render();
-    } catch (error) {
-      const e = error as WidgetError;
-      this.state.versionList.status = 'error';
-      this.state.versionList.error = e.kind === 'api'
-        ? getErrorMessage(e.error.code, e.error.details)
-        : 'Failed to load versions. Please try again.';
-      this.render();
-      if (e.kind === 'api') {
-        const code = e.error.code;
-        const authCodes = ['session.invalid_token', 'common.auth.missing_token', 'common.auth.expired', 'common.auth.invalid_token'];
-        if (authCodes.includes(code)) {
-          this.handleError(e, 'version_list');
-        }
-      }
-    }
   }
 
   private async handleDownloadVersionAsset(version: number): Promise<void> {
@@ -1689,7 +1729,7 @@ export class AllfeatRegister extends HTMLElement {
     dispatchDownloadStarted(this, { workId: work.id, kind: 'asset' });
     try {
       const { url } = await downloadUserWorkVersionAsset(
-        this.atsUrl, this.token, this.siteKey, this.externalUserId, work.id, version,
+        this.proxyUrl, this.token, this.siteKey, this.externalUserId, work.id, version,
       );
       openPresignedDownload(url);
       dispatchDownloadComplete(this, { workId: work.id, kind: 'asset' });
@@ -1718,24 +1758,23 @@ export class AllfeatRegister extends HTMLElement {
   }
 
   /**
-   * Fetch the latest version's creators for prefill. Reuses the work-selector cache
-   * (populated by "Show creators") when available so we don't double-fetch.
+   * Resolve the latest version's creators for prefill. The B2B listing embeds
+   * creators inline per version, so they come straight off the already-loaded
+   * `SelectedWork.versions` — no extra request. Reuses the work-selector cache
+   * (populated by "Show creators") when present so prefill stays consistent.
    */
-  private async fetchWorkCreatorsForPrefill(work: SelectedWork): Promise<WorkCreator[]> {
+  private fetchWorkCreatorsForPrefill(work: SelectedWork): WorkCreator[] {
     const cached = this.state.workList.creatorsByWork[work.id];
     if (cached && cached.status === 'loaded') return cached.creators;
-    if (!this.externalUserId || !this.atsUrl || !this.token || !this.siteKey) return [];
 
-    const response = await listUserWorkVersionCreators(
-      this.atsUrl, this.token, this.siteKey, this.externalUserId, work.id, work.latestVersion, this.network,
-    );
-    const mapped = response.creators.map(c => this.mapWorkCreator(c));
+    const latest = work.versions.find(v => v.version === work.latestVersion);
+    const creators = latest?.creators ?? [];
     // Seed the cache so a later "Show creators" toggle is instant.
     this.state.workList.creatorsByWork = {
       ...this.state.workList.creatorsByWork,
-      [work.id]: { status: 'loaded', creators: mapped, error: null },
+      [work.id]: { status: 'loaded', creators, error: null },
     };
-    return mapped;
+    return creators;
   }
 
   /**
@@ -1796,50 +1835,17 @@ export class AllfeatRegister extends HTMLElement {
     }
   }
 
-  /** Fetch the latest version's creators for a single work in the work-selector list. */
-  private async loadWorkLatestCreators(workId: string): Promise<void> {
-    if (!this.externalUserId) return;
-    if (!this.atsUrl || !this.token || !this.siteKey) return;
+  /** Resolve the latest version's creators for a single work in the work-selector list. */
+  private loadWorkLatestCreators(workId: string): void {
     const work = this.state.workList.works.find(w => w.id === workId);
     if (!work) return;
 
+    const latest = work.versions.find(v => v.version === work.latestVersion);
     this.state.workList.creatorsByWork = {
       ...this.state.workList.creatorsByWork,
-      [workId]: { status: 'loading', creators: [], error: null },
+      [workId]: { status: 'loaded', creators: latest?.creators ?? [], error: null },
     };
     this.render();
-
-    try {
-      const response = await listUserWorkVersionCreators(
-        this.atsUrl, this.token, this.siteKey, this.externalUserId, workId, work.latestVersion, this.network,
-      );
-      this.state.workList.creatorsByWork = {
-        ...this.state.workList.creatorsByWork,
-        [workId]: {
-          status: 'loaded',
-          creators: response.creators.map(c => this.mapWorkCreator(c)),
-          error: null,
-        },
-      };
-      this.render();
-    } catch (error) {
-      const e = error as WidgetError;
-      const message = e.kind === 'api'
-        ? getErrorMessage(e.error.code, e.error.details)
-        : 'Failed to load creators. Please try again.';
-      this.state.workList.creatorsByWork = {
-        ...this.state.workList.creatorsByWork,
-        [workId]: { status: 'error', creators: [], error: message },
-      };
-      this.render();
-      if (e.kind === 'api') {
-        const code = e.error.code;
-        const authCodes = ['session.invalid_token', 'common.auth.missing_token', 'common.auth.expired', 'common.auth.invalid_token'];
-        if (authCodes.includes(code)) {
-          this.handleError(e, 'work_creators');
-        }
-      }
-    }
   }
 
   /**
@@ -1859,49 +1865,17 @@ export class AllfeatRegister extends HTMLElement {
     }
   }
 
-  /** Fetch creators for a specific version of the currently-detailed work. */
-  private async loadVersionCreators(version: number): Promise<void> {
+  /** Resolve creators for a specific version of the currently-detailed work. */
+  private loadVersionCreators(version: number): void {
     const work = this.state.versionList.work;
-    if (!work || !this.externalUserId) return;
-    if (!this.atsUrl || !this.token || !this.siteKey) return;
+    if (!work) return;
 
+    const match = work.versions.find(v => v.version === version);
     this.state.versionList.creatorsByVersion = {
       ...this.state.versionList.creatorsByVersion,
-      [version]: { status: 'loading', creators: [], error: null },
+      [version]: { status: 'loaded', creators: match?.creators ?? [], error: null },
     };
     this.render();
-
-    try {
-      const response = await listUserWorkVersionCreators(
-        this.atsUrl, this.token, this.siteKey, this.externalUserId, work.id, version, this.network,
-      );
-      this.state.versionList.creatorsByVersion = {
-        ...this.state.versionList.creatorsByVersion,
-        [version]: {
-          status: 'loaded',
-          creators: response.creators.map(c => this.mapWorkCreator(c)),
-          error: null,
-        },
-      };
-      this.render();
-    } catch (error) {
-      const e = error as WidgetError;
-      const message = e.kind === 'api'
-        ? getErrorMessage(e.error.code, e.error.details)
-        : 'Failed to load creators. Please try again.';
-      this.state.versionList.creatorsByVersion = {
-        ...this.state.versionList.creatorsByVersion,
-        [version]: { status: 'error', creators: [], error: message },
-      };
-      this.render();
-      if (e.kind === 'api') {
-        const code = e.error.code;
-        const authCodes = ['session.invalid_token', 'common.auth.missing_token', 'common.auth.expired', 'common.auth.invalid_token'];
-        if (authCodes.includes(code)) {
-          this.handleError(e, 'version_creators');
-        }
-      }
-    }
   }
 
   private async handleDownloadVersionCert(version: number): Promise<void> {
@@ -1913,7 +1887,7 @@ export class AllfeatRegister extends HTMLElement {
     dispatchDownloadStarted(this, { workId: work.id, kind: 'certificate' });
     try {
       const { url } = await downloadUserWorkVersionCertificate(
-        this.atsUrl, this.token, this.siteKey, this.externalUserId, work.id, version,
+        this.proxyUrl, this.token, this.siteKey, this.externalUserId, work.id, version,
       );
       openPresignedDownload(url);
       dispatchDownloadComplete(this, { workId: work.id, kind: 'certificate' });

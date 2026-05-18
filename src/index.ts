@@ -29,8 +29,6 @@ export {
   subscribeToTransaction,
   pollTransactionStatus,
   listUserWorks,
-  listUserWorkVersions,
-  listUserWorkVersionCreators,
   downloadUserWorkVersionAsset,
   downloadUserWorkVersionCertificate,
   initUserWorkVersionUpload,
@@ -66,9 +64,7 @@ export type {
   UserWork,
   ListUserWorksResponse,
   WorkVersionApi,
-  ListWorkVersionsResponse,
   WorkCreatorResponse,
-  ListWorkCreatorsResponse,
   PageInfo,
 } from './api/types';
 

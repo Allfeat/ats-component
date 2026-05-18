@@ -12,7 +12,14 @@ services:
       # Ports match the web2-platform docker-compose.dev.yml mappings (host 13xxx → container 3xxx).
       NUXT_ORGANIZATIONS_URL: http://host.docker.internal:13008
       NUXT_SECRET_KEY: csk_0000000000000000000000000000000000000000000000000000000000000000
+      # B2B organization API key + id — used server-side by the /api/ats-proxy
+      # route to reach the user-scoped works endpoints (download + update flows).
+      NUXT_ATS_API_KEY: afo_sk_live_000000000000000000000000000000000000000000000000
+      NUXT_ORGANIZATION_ID: 00000000-0000-0000-0000-000000000000
+      # ATS base for the proxy's server-side calls — reaches the host via
+      # host.docker.internal (the browser-facing NUXT_PUBLIC_ATS_URL stays localhost).
+      NUXT_ATS_API_URL: http://host.docker.internal:13002
       # Public (exposed to client) — ats-url is used by the browser, so it stays localhost.
       NUXT_PUBLIC_ATS_URL: http://localhost:13002
-      NUXT_PUBLIC_SITE_KEY: cpk_0000000000000000000000000000000000000000000000000000000000000000
+      NUXT_PUBLIC_SITE_KEY: cpk_cf90a2dfd5a810e4f1450c19a75b4c54e231dcc3c182f5e6765ae5cc175bd390
       NUXT_PUBLIC_NETWORK: mainnet

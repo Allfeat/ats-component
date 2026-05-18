@@ -125,7 +125,6 @@ export function renderFileStep(
 
   return `
     <div class="ats-section-title ats-section-title-centered">File Selection</div>
-    <div class="ats-section-title">${isUpdate ? 'Select the new version file' : 'Select the file to protect'}</div>
     <div class="ats-file-drop ${hasFile ? 'has-file' : ''}" id="file-drop-zone">
       <div class="ats-file-drop-icon">${ICONS.upload}</div>
       ${hasFile && state.file ? `

@@ -13,19 +13,10 @@ const loading = ref(true);
 const widgetRef = ref<HTMLElement | null>(null);
 const mobileNavOpen = ref(false);
 
-async function requestToken(mode: WidgetMode) {
-  // The mock layer handles the download flow without a real backend token, so we
-  // short-circuit here while the BFF doesn't know about `'download'` yet.
-  if (mode === "download") {
-    return {
-      token: "mock-download-token",
-      expires_in: 3600,
-      network,
-      max_file_size_bytes: null as number | null,
-    };
-  }
-  const actionType = mode === "update" ? "update_version" : "register";
-
+// Only `register` needs a widget session token. `update` and `download` are
+// external-user-scoped here (DEMO_EXTERNAL_USER_ID is always set), so they
+// reach the ATS through the BFF proxy, which carries the organization API key.
+async function requestToken() {
   const res = await $fetch<{
     token: string;
     expires_in: number;
@@ -34,7 +25,7 @@ async function requestToken(mode: WidgetMode) {
   }>("/api/abbey-road/token", {
     method: "POST",
     body: {
-      action_type: actionType,
+      action_type: "register",
       allowed_network: network,
     },
   });
@@ -49,28 +40,35 @@ async function configureWidget(mode: WidgetMode) {
   loading.value = true;
 
   try {
-    const {
-      token,
-      network: tokenNetwork,
-      max_file_size_bytes,
-    } = await requestToken(mode);
-
     widget.setAttribute("ats-url", atsUrl);
     widget.setAttribute("site-key", siteKey);
+    widget.setAttribute("network", network);
+    // `proxy-url` points the user-scoped flows (update + download) at our BFF
+    // proxy route, which injects the organization API key server-side.
+    widget.setAttribute("proxy-url", "/api/ats-proxy");
     widget.setAttribute("external-user-id", DEMO_EXTERNAL_USER_ID);
-    if (tokenNetwork) widget.setAttribute("network", tokenNetwork);
 
-    if (max_file_size_bytes != null) {
-      widget.setAttribute("max-file-size", String(max_file_size_bytes));
+    if (mode === "register") {
+      const {
+        token,
+        network: tokenNetwork,
+        max_file_size_bytes,
+      } = await requestToken();
+      if (tokenNetwork) widget.setAttribute("network", tokenNetwork);
+      if (max_file_size_bytes != null) {
+        widget.setAttribute("max-file-size", String(max_file_size_bytes));
+      } else {
+        widget.removeAttribute("max-file-size");
+      }
+      // Set the token before `mode` so register-mode side effects are ready.
+      widget.setToken(token);
     } else {
+      // update + download reach the ATS through the BFF proxy — no widget
+      // session token is required.
       widget.removeAttribute("max-file-size");
     }
 
-    // Set token BEFORE the mode attribute so any mode-triggered side effects
-    // (e.g. listUserWorks for update/download) have an authenticated client.
-    widget.setToken(token);
     widget.setAttribute("mode", mode);
-
     console.log(`[Abbey Road] Widget initialized in ${mode} mode`);
   } catch (err: any) {
     const msg =
@@ -78,7 +76,7 @@ async function configureWidget(mode: WidgetMode) {
       err?.data?.statusMessage ||
       err?.message ||
       String(err);
-    console.error("[Abbey Road] Failed to get token:", msg);
+    console.error("[Abbey Road] Failed to configure widget:", msg);
   } finally {
     loading.value = false;
   }
@@ -98,9 +96,7 @@ onMounted(() => {
   widget.addEventListener("allfeat:token-expired", async () => {
     console.log("[Abbey Road] Token expired, refreshing...");
     try {
-      const { token, max_file_size_bytes } = await requestToken(
-        activeMode.value,
-      );
+      const { token, max_file_size_bytes } = await requestToken();
       if (max_file_size_bytes != null) {
         widget.setAttribute("max-file-size", String(max_file_size_bytes));
       }
@@ -131,7 +127,7 @@ onMounted(() => {
 });
 
 useHead({
-  title: "Manage Your Works — Abbey Road Studios",
+  title: "Protect Your Works — Abbey Road Studios",
   link: [
     { rel: "preconnect", href: "https://fonts.googleapis.com" },
     { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" },
@@ -284,7 +280,7 @@ useHead({
     <main class="main-content">
       <div class="page-container">
         <div class="page-header">
-          <h1 class="page-title">Manage Your Works</h1>
+          <h1 class="page-title">Protect Your Works</h1>
           <p class="page-subtitle">
             Protect new works, update existing ones, or download your assets
             and certificates

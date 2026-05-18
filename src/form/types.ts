@@ -120,23 +120,30 @@ export interface AccessData {
 }
 
 /**
- * CamelCase representation of a work returned by the user-scoped list endpoint.
- * Field names mirror the dashboard `WorkSummary` shape (with camelCase conversion).
+ * CamelCase representation of a work returned by the user-scoped (B2B) listing.
+ *
+ * The B2B listing embeds the version history inline, so a `SelectedWork`
+ * carries its own `versions`; the download-detail screen reads them straight
+ * from here without a second request. `assetFilename` is derived from the
+ * latest inline version; `owner` is not exposed by that endpoint and is left
+ * empty.
  */
 export interface SelectedWork {
   id: string;
-  /** `-1` if not yet assigned on-chain, matching the dashboard sentinel. */
+  /** `-1` until the work is confirmed on-chain (matches the dashboard sentinel). */
   atsId: number;
   owner: string;
   latestVersion: number;
   latestCommitment: string | null;
   /** ISO timestamp of first registration. */
   createdAt: string | null;
-  /** ISO timestamp of most recent version registration — used to order the list. Widget-specific. */
+  /** ISO timestamp of most recent version registration — used to order the list. */
   updatedAt: string | null;
   title: string;
   assetFilename: string | null;
   hasFiles: boolean;
+  /** Full on-chain version history, oldest-first (embedded in the B2B listing). */
+  versions: WorkVersion[];
 }
 
 /** Camel-case view of a single on-chain version of a work. */
@@ -153,9 +160,11 @@ export interface WorkVersion {
   txHash: string | null;
   feeCredits: number | null;
   storageFeeCredits: number | null;
+  /** Creators credited on this version (embedded inline in the B2B listing). */
+  creators: WorkCreator[];
 }
 
-/** Camel-case view of a creator returned by the version-creators endpoint. */
+/** Camel-case view of a creator credited on a version. */
 export interface WorkCreator {
   fullName: string;
   email: string | null;

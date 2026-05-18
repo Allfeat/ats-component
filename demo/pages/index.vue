@@ -3,7 +3,7 @@
 const config = reactive({
   organizationsUrl: "http://localhost:13008",
   siteKey:
-    "cpk_0000000000000000000000000000000000000000000000000000000000000000",
+    "cpk_cf90a2dfd5a810e4f1450c19a75b4c54e231dcc3c182f5e6765ae5cc175bd390",
   secretKey:
     "csk_0000000000000000000000000000000000000000000000000000000000000000",
   atsUrl: "http://localhost:13002",
@@ -76,16 +76,10 @@ function syntaxHighlightJSON(obj: unknown): string {
 }
 
 // --------------- Token management ---------------
+// `register` and the legacy access-code `update` path use a widget session
+// token. `download` (and `update` with an external user id) instead reach the
+// ATS through the BFF proxy, so they need no token — see `initializeFlow`.
 async function requestToken() {
-  // Mock layer handles the download flow without a backend token, so allow demoing it
-  // without requiring the BFF to know about `'download'` yet.
-  if (config.mode === "download") {
-    return {
-      token: "mock-download-token",
-      expires_in: 3600,
-      network: config.network,
-    };
-  }
   const actionType = config.mode === "update" ? "update_version" : "register";
 
   if (!config.organizationsUrl || !config.secretKey) {
@@ -119,25 +113,16 @@ async function requestToken() {
 const widgetRef = ref<HTMLElement | null>(null);
 
 async function initializeFlow() {
-  setStatus("warn", "Requesting token from BFF...");
-  logEvent("ats:token-request", { endpoint: "/api/token" });
+  const widget = widgetRef.value as any;
+  if (!widget) return;
 
   try {
-    const { token, expires_in, network } = await requestToken();
-    logEvent("ats:token-received", {
-      expires_in,
-      network,
-      tokenPreview: token.substring(0, 30) + "...",
-    });
-
-    const widget = widgetRef.value as any;
-    if (!widget) return;
-
     widget.setAttribute("ats-url", config.atsUrl);
     widget.setAttribute("site-key", config.siteKey);
-    if (network) {
-      widget.setAttribute("network", network);
-    }
+    widget.setAttribute("network", config.network);
+    // `proxy-url` routes the user-scoped flows (download, and update with an
+    // external user id) through the BFF proxy that holds the organization API key.
+    widget.setAttribute("proxy-url", "/api/ats-proxy");
 
     // External user id is shared by update + download flows; remove when empty so the
     // widget falls back to the legacy access-code path for `update`.
@@ -145,6 +130,33 @@ async function initializeFlow() {
       widget.setAttribute("external-user-id", config.externalUserId);
     } else {
       widget.removeAttribute("external-user-id");
+    }
+
+    // Download mode is fully proxy-backed — it carries no widget session token.
+    if (config.mode === "download") {
+      widget.setAttribute("mode", config.mode);
+      setStatus("ok", "Download mode ready — works load via the BFF proxy");
+      logEvent("ats:widget-configured", {
+        atsUrl: config.atsUrl,
+        mode: config.mode,
+        ...(config.externalUserId
+          ? { externalUserId: config.externalUserId }
+          : {}),
+      });
+      return;
+    }
+
+    setStatus("warn", "Requesting token from BFF...");
+    logEvent("ats:token-request", { endpoint: "/api/token" });
+    const { token, expires_in, network } = await requestToken();
+    logEvent("ats:token-received", {
+      expires_in,
+      network,
+      tokenPreview: token.substring(0, 30) + "...",
+    });
+
+    if (network) {
+      widget.setAttribute("network", network);
     }
 
     // Set token BEFORE mode so any mode-triggered side effects (listUserWorks) have auth.
@@ -172,12 +184,19 @@ async function initializeFlow() {
       err?.data?.statusMessage ||
       err?.message ||
       String(err);
-    setStatus("err", "Failed to get token: " + msg);
+    setStatus("err", "Failed to initialize: " + msg);
     logEvent("ats:token-error", { error: msg });
   }
 }
 
 async function refreshToken() {
+  if (config.mode === "download") {
+    setStatus(
+      "ok",
+      "Download mode is proxy-backed — no session token to refresh",
+    );
+    return;
+  }
   setStatus("warn", "Manual token refresh...");
   logEvent("ats:manual-refresh", {});
 
@@ -239,8 +258,12 @@ onMounted(() => {
   // Token expired or reset → auto-refresh via BFF
   widget.addEventListener("allfeat:token-expired", async (e: Event) => {
     const detail = (e as CustomEvent).detail;
-    const isReset = detail?.pendingAction === "reset";
     logEvent("allfeat:token-expired", detail);
+    if (config.mode === "download") {
+      // Download mode is proxy-backed and carries no session token.
+      return;
+    }
+    const isReset = detail?.pendingAction === "reset";
     setStatus(
       "warn",
       isReset
