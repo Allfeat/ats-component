@@ -4,6 +4,9 @@ import {
   initWork,
   prepareWork,
   confirmWork,
+  initUserWork,
+  prepareUserWork,
+  confirmUserWork,
   initVersionUpload,
   initVersion,
   prepareVersion,
@@ -13,6 +16,7 @@ import {
   subscribeToTransaction,
   pollTransactionStatus,
   listUserWorks,
+  downloadUserWorkCertificate,
   downloadUserWorkVersionAsset,
   downloadUserWorkVersionCertificate,
   initUserWorkVersionUpload,
@@ -636,7 +640,12 @@ export class AllfeatRegister extends HTMLElement {
       return;
     }
 
-    if (!this.token) {
+    // The B2B proxy flows authenticate server-side with the organization API
+    // key, so they need neither a session token nor a site key. The
+    // session-token flows (no external user id) require both.
+    const usesProxyAuth = this.hasExternalUser && !!this.proxyUrl;
+
+    if (!usesProxyAuth && !this.token) {
       container.innerHTML = `
         <div class="ats-alert ats-alert-error">
           <strong>Authentication required:</strong><br />
@@ -646,7 +655,7 @@ export class AllfeatRegister extends HTMLElement {
       return;
     }
 
-    if (!this.siteKey) {
+    if (!usesProxyAuth && !this.siteKey) {
       container.innerHTML = `
         <div class="ats-alert ats-alert-error">
           <strong>Configuration Error:</strong><br />
@@ -684,7 +693,11 @@ export class AllfeatRegister extends HTMLElement {
           content = renderCompleteScreen(
             this.state.completionData.explorerUrl,
             this.mode,
-            this.state.completionData.accessCode,
+            // The access code is the standalone credential for the
+            // session-token flow. With an external user id, the host owns the
+            // user identity and the work is reachable via the B2B listing — so
+            // hide it.
+            this.hasExternalUser ? undefined : this.state.completionData.accessCode,
           );
         }
         break;
@@ -732,7 +745,7 @@ export class AllfeatRegister extends HTMLElement {
     let content = renderStepIndicator(formSubStep, this.mode, this.hasExternalUser);
 
     // The existing-filename hint for FILE / REVIEW steps comes from either the
-    // selected user-scoped work (new flow) OR the access-code-fetched work (legacy).
+    // selected user-scoped work (B2B flow) OR the access-code-fetched work.
     const existingFilename = this.state.selectedWork?.assetFilename ?? this.state.accessData?.assetFilename ?? null;
     const accessDataForReview: AccessData | null = this.state.accessData ?? this.selectedWorkAsAccessData();
 
@@ -1283,7 +1296,12 @@ export class AllfeatRegister extends HTMLElement {
   private async handleSubmit(): Promise<void> {
     if (this.state.submitting) return;
 
-    if (!this.token) {
+    // The B2B proxy flows (register / update for an external user) authenticate
+    // server-side with the organization API key — no session token is needed.
+    // Only the session-token paths (register without a proxy, access-code
+    // update) do.
+    const usesProxyAuth = this.hasExternalUser && !!this.proxyUrl;
+    if (!usesProxyAuth && !this.token) {
       this.transitionToFailed('No authentication token provided. Please set the token attribute.', null, null);
       return;
     }
@@ -1336,6 +1354,18 @@ export class AllfeatRegister extends HTMLElement {
   // ============================================
 
   private async executeRegisterFlow(formState: typeof this.state.formState): Promise<void> {
+    // With a proxy + external user id, register through the ATS B2B routes so
+    // the work is tagged with `external_user_ref` (the direct route ignores it)
+    // and authenticated by the organization API key — no session token needed.
+    if (this.hasExternalUser && this.proxyUrl) {
+      await this.executeRegisterFlowViaProxy(formState);
+    } else {
+      await this.executeRegisterFlowWithToken(formState);
+    }
+  }
+
+  /** Session-token register path: direct ATS `/v1/works/*`. */
+  private async executeRegisterFlowWithToken(formState: typeof this.state.formState): Promise<void> {
     const file = formState.file;
     if (!file) {
       this.transitionToFailed('No file selected', null, null);
@@ -1389,6 +1419,72 @@ export class AllfeatRegister extends HTMLElement {
     await this.waitForTransaction(confirmResponse.ws_url, confirmResponse.status_url, confirmResponse.access_code);
   }
 
+  /**
+   * Register path for the external-user flow. Calls the ATS B2B register
+   * endpoints through the host BFF proxy (which injects the organization API
+   * key), tagging the work with `external_user_ref` so it surfaces in that
+   * user's download / update lists.
+   */
+  private async executeRegisterFlowViaProxy(formState: typeof this.state.formState): Promise<void> {
+    const file = formState.file;
+    if (!file) {
+      this.transitionToFailed('No file selected', null, null);
+      return;
+    }
+    if (!this.externalUserId || !this.proxyUrl) {
+      this.transitionToFailed(
+        'Registration is not configured: a proxy URL and external user id are required.',
+        null,
+        'widget.register_not_configured',
+      );
+      return;
+    }
+
+    const creators = this.mapCreators(formState);
+
+    // Step 1: Init
+    const initResponse = await initUserWork(
+      this.proxyUrl, this.token, this.siteKey,
+      {
+        title: formState.title,
+        creators,
+        filename: file.name,
+        network: this.network,
+        external_user_ref: this.externalUserId,
+      },
+    );
+
+    this.state.jobId = initResponse.job_id;
+    this.state.uploadUrl = initResponse.upload_url;
+
+    // Step 2: Upload
+    await this.performUpload(initResponse.upload_url, file);
+
+    // Step 3: Prepare
+    this.state.screen = 'CONFIRMING';
+    this.render();
+
+    const prepareResponse = await prepareUserWork(
+      this.proxyUrl, this.token, this.siteKey,
+      { job_id: initResponse.job_id },
+    );
+
+    this.state.workId = prepareResponse.work_id || null;
+
+    // Step 4: Confirm
+    const confirmResponse = await confirmUserWork(
+      this.proxyUrl, this.token, this.siteKey,
+      { job_id: initResponse.job_id },
+    );
+
+    this.state.transactionId = confirmResponse.transaction_id;
+    dispatchConfirmed(this, { transactionId: confirmResponse.transaction_id });
+
+    // Step 5: Track
+    this.transitionToScreen('TRACKING');
+    await this.waitForTransaction(confirmResponse.ws_url, confirmResponse.status_url, confirmResponse.access_code);
+  }
+
   // ============================================
   // Update Flow
   // ============================================
@@ -1401,7 +1497,7 @@ export class AllfeatRegister extends HTMLElement {
     }
   }
 
-  /** Legacy update path: uses access code as authorization for each version endpoint. */
+  /** Access-code update path: uses access code as authorization for each version endpoint. */
   private async executeUpdateFlowByAccessCode(formState: typeof this.state.formState): Promise<void> {
     const creators = this.mapCreators(formState);
     const file = formState.file;
@@ -2093,9 +2189,16 @@ export class AllfeatRegister extends HTMLElement {
     if (!this.state.completionData || !this.state.workId) return;
 
     try {
-      const { url } = await downloadCertificate(
-        this.atsUrl, this.token, this.siteKey, this.state.workId,
-      );
+      // B2B flow: download through the proxy (organization API key), since the
+      // success screen has no session token. Session-token flow: direct ATS.
+      const usesProxyAuth = this.hasExternalUser && !!this.proxyUrl;
+      const { url } = usesProxyAuth
+        ? await downloadUserWorkCertificate(
+            this.proxyUrl, this.token, this.siteKey, this.externalUserId!, this.state.workId,
+          )
+        : await downloadCertificate(
+            this.atsUrl, this.token, this.siteKey, this.state.workId,
+          );
       openPresignedDownload(url);
     } catch (error) {
       this.handleError(error as WidgetError, 'download');

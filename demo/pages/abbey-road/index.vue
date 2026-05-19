@@ -13,26 +13,6 @@ const loading = ref(true);
 const widgetRef = ref<HTMLElement | null>(null);
 const mobileNavOpen = ref(false);
 
-// Only `register` needs a widget session token. `update` and `download` are
-// external-user-scoped here (DEMO_EXTERNAL_USER_ID is always set), so they
-// reach the ATS through the BFF proxy, which carries the organization API key.
-async function requestToken() {
-  const res = await $fetch<{
-    token: string;
-    expires_in: number;
-    network?: string;
-    max_file_size_bytes?: number;
-  }>("/api/abbey-road/token", {
-    method: "POST",
-    body: {
-      action_type: "register",
-      allowed_network: network,
-    },
-  });
-
-  return res;
-}
-
 async function configureWidget(mode: WidgetMode) {
   const widget = widgetRef.value as any;
   if (!widget) return;
@@ -43,30 +23,13 @@ async function configureWidget(mode: WidgetMode) {
     widget.setAttribute("ats-url", atsUrl);
     widget.setAttribute("site-key", siteKey);
     widget.setAttribute("network", network);
-    // `proxy-url` points the user-scoped flows (update + download) at our BFF
-    // proxy route, which injects the organization API key server-side.
+    // All three modes (register, update, download) are external-user-scoped
+    // here — DEMO_EXTERNAL_USER_ID is always set — so they reach the ATS B2B
+    // routes through the BFF proxy, which injects the organization API key
+    // server-side. No widget session token is involved.
     widget.setAttribute("proxy-url", "/api/ats-proxy");
     widget.setAttribute("external-user-id", DEMO_EXTERNAL_USER_ID);
-
-    if (mode === "register") {
-      const {
-        token,
-        network: tokenNetwork,
-        max_file_size_bytes,
-      } = await requestToken();
-      if (tokenNetwork) widget.setAttribute("network", tokenNetwork);
-      if (max_file_size_bytes != null) {
-        widget.setAttribute("max-file-size", String(max_file_size_bytes));
-      } else {
-        widget.removeAttribute("max-file-size");
-      }
-      // Set the token before `mode` so register-mode side effects are ready.
-      widget.setToken(token);
-    } else {
-      // update + download reach the ATS through the BFF proxy — no widget
-      // session token is required.
-      widget.removeAttribute("max-file-size");
-    }
+    widget.removeAttribute("max-file-size");
 
     widget.setAttribute("mode", mode);
     console.log(`[Abbey Road] Widget initialized in ${mode} mode`);
@@ -91,21 +54,6 @@ function switchMode(mode: WidgetMode) {
 onMounted(() => {
   const widget = widgetRef.value;
   if (!widget) return;
-
-  // Token expired -> auto-refresh silently for the currently active mode.
-  widget.addEventListener("allfeat:token-expired", async () => {
-    console.log("[Abbey Road] Token expired, refreshing...");
-    try {
-      const { token, max_file_size_bytes } = await requestToken();
-      if (max_file_size_bytes != null) {
-        widget.setAttribute("max-file-size", String(max_file_size_bytes));
-      }
-      (widget as any).setToken(token);
-      console.log("[Abbey Road] Token refreshed");
-    } catch (err: any) {
-      console.error("[Abbey Road] Token refresh failed:", err);
-    }
-  });
 
   widget.addEventListener("allfeat:complete", (e: Event) => {
     console.log("[Abbey Road] Work registered!", (e as CustomEvent).detail);

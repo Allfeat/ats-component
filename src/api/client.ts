@@ -417,6 +417,25 @@ export async function downloadUserWorkVersionAsset(
   return apiFetch<DownloadAssetResponse>(url, token, siteKey, { method: 'GET' });
 }
 
+/**
+ * Get a presigned URL to download a work's latest-version certificate PDF.
+ * Work-level counterpart of `downloadCertificate` for the external-user flow —
+ * used by the post-registration success screen, which has no session token.
+ */
+export async function downloadUserWorkCertificate(
+  proxyUrl: string,
+  token: string,
+  siteKey: string,
+  externalUserId: string,
+  workId: string,
+): Promise<DownloadCertificateResponse> {
+  const url = buildUrl(
+    proxyUrl,
+    `/external-users/${euid(externalUserId)}/works/${encodeURIComponent(workId)}/download/certificate`,
+  );
+  return apiFetch<DownloadCertificateResponse>(url, token, siteKey, { method: 'GET' });
+}
+
 /** Get a presigned URL to download a specific version's certificate PDF. */
 export async function downloadUserWorkVersionCertificate(
   proxyUrl: string,
@@ -431,6 +450,58 @@ export async function downloadUserWorkVersionCertificate(
     `/external-users/${euid(externalUserId)}/works/${encodeURIComponent(workId)}/versions/${version}/download/certificate`,
   );
   return apiFetch<DownloadCertificateResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+// Registration endpoints. The ATS B2B register routes
+// (`/v1/organizations/{org}/works/init|prepare|confirm`) are thin wrappers over
+// the same handlers as the direct register flow, so they share the response
+// shapes. The crucial difference from the direct `/v1/works/*` path: the B2B
+// `init` honours `external_user_ref`, tagging the work to the end user so it
+// surfaces later in their download / update lists (the direct route ignores it).
+
+export async function initUserWork(
+  proxyUrl: string,
+  token: string,
+  siteKey: string,
+  data: {
+    title: string;
+    creators: CreatorRequest[];
+    filename: string;
+    network: string;
+    external_user_ref: string;
+  },
+): Promise<InitWorkResponse> {
+  const url = buildUrl(proxyUrl, '/works/init');
+  return apiFetch<InitWorkResponse>(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function prepareUserWork(
+  proxyUrl: string,
+  token: string,
+  siteKey: string,
+  data: { job_id: string },
+): Promise<PrepareWorkResponse> {
+  const url = buildUrl(proxyUrl, '/works/prepare');
+  return apiFetch<PrepareWorkResponse>(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify({ ...data, passphrase: null }),
+  });
+}
+
+export async function confirmUserWork(
+  proxyUrl: string,
+  token: string,
+  siteKey: string,
+  data: { job_id: string },
+): Promise<ConfirmWorkResponse> {
+  const url = buildUrl(proxyUrl, '/works/confirm');
+  return apiFetch<ConfirmWorkResponse>(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 // Version-update endpoints. The ATS B2B version routes are keyed by the work's
