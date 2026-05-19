@@ -14,27 +14,50 @@ partner's end-users. On the Allfeat platform that data lives behind the ATS
 
 ## Why the widget cannot call the ATS directly
 
-Those endpoints authenticate with an **organization API key**
-(`afo_sk_live_…`) — a long-lived, organization-wide secret. The full contract
-is the *Allfeat Organization API — Integration Guide*
-(`services/organizations/docs/api-keys-integration-guide.md` in the
-`web2-platform` repo), which is emphatic that the key is server-side only:
+The B2B surface uses **two different credentials**, and neither belongs in the
+browser:
+
+| Surface                           | Credential                          | Notes                                                                          |
+|-----------------------------------|-------------------------------------|--------------------------------------------------------------------------------|
+| Writes (`/works/{init,prepare,confirm}`, version updates) | **Org API key** (`afo_sk_live_…`)   | Long-lived, organization-wide secret. Strict server-to-server.                 |
+| Reads (`/external-users/{ref}/…`) | **Partner-session JWT**             | Short-lived (~60 min) HS256 token pinned to one `(organization_id, external_user_ref)` pair. Minted from the API key on demand. |
+
+The org API key is described in the *Allfeat Organization API — Integration
+Guide* (`services/organizations/docs/api-keys-integration-guide.md` in the
+`web2-platform` repo), which is emphatic that it is server-side only:
 
 > *Treat the bearer token as a production secret. Store it in a secrets
 > manager, never in source control or container images.*
 
-The widget runs in the browser. It therefore **cannot** hold that key, and the
-ATS B2B extractor explicitly rejects the widget's own site-scoped session JWT.
+The widget runs in the browser, so it cannot hold the API key. The ATS read
+routes specifically refuse it too — shipping `afo_sk_*` to the browser would
+leak full registration scope to every end-user, so the read surface only
+accepts the narrowly-scoped partner-session JWT.
 
-So the widget never calls the ATS B2B API directly. Instead it calls a
+The widget therefore never calls the ATS B2B API directly. It calls a
 **host-provided BFF proxy**, and the host's backend — which already holds the
-key for server-to-server use — injects it and forwards the request.
+API key — picks the right credential per request:
 
 ```
-┌────────────┐  proxy-url (browser fetch)  ┌─────────────┐  + afo_sk_ key  ┌──────────┐
-│ <ats-widget>│ ───────────────────────────▶│  Host BFF   │ ───────────────▶│  ATS API │
-│  (browser) │                              │   proxy     │                 │  (B2B)   │
-└────────────┘                              └─────────────┘                 └──────────┘
+                                                                   ┌─ writes (POST /works/*) ────────┐
+                                                                   │  Authorization: Bearer afo_sk_* │
+                                                                   ▼
+┌────────────┐  proxy-url (browser fetch)  ┌─────────────┐                              ┌──────────┐
+│ <ats-widget>│ ───────────────────────────▶│  Host BFF   │ ────────────────────────────▶│  ATS API │
+│  (browser) │                              │   proxy     │                              │  (B2B)   │
+└────────────┘                              └─────┬───────┘                              └──────────┘
+                                                  │
+                                                  │  reads (GET /external-users/{ref}/*)
+                                                  │  ┌──────────────────────┐
+                                                  └─▶│  Organizations API   │
+                                                     │  POST .../partner-   │
+                                                     │  sessions  (afo_sk_*)│
+                                                     └──────┬───────────────┘
+                                                            │  { token, expires_at }
+                                                            ▼
+                                                  Authorization: Bearer <JWT>
+                                                            │
+                                                            └──▶  ATS API (reads)
 ```
 
 The widget bundles its consumer (`src/api/client.ts`); the BFF proxy is the
@@ -52,8 +75,8 @@ The widget bundles its consumer (`src/api/client.ts`); the BFF proxy is the
 | `ats-url`          | all modes             | ATS API base — still used directly for **transaction tracking**. |
 
 \* `update` only needs `proxy-url` / `external-user-id` when the host wants the
-external-user update flow. Without `external-user-id`, `update` keeps using the
-legacy access-code flow against `ats-url`.
+external-user update flow. Without `external-user-id`, `update` uses the
+access-code flow against `ats-url` (a co-equal supported path, not a fallback).
 
 `register` mode still registers against `ats-url` directly with the widget
 session token. Its one tie-in with this document: when `external-user-id` is
@@ -132,19 +155,59 @@ For every request above, the host BFF must:
    forwarded widget token, …) — the proxy is a public surface.
 2. **Prepend** `/v1/organizations/{organization_id}` to the path, where
    `organization_id` is the org that owns the API key.
-3. **Swap the credential**: drop the widget's `Authorization` header and set
-   `Authorization: Bearer <afo_sk_… organization key>`.
+3. **Pick the right credential for the route** and set it on `Authorization`:
+   - **Write routes** (the `POST /works/{atsId}/versions/*` rows above) —
+     `Authorization: Bearer <afo_sk_… organization key>`.
+   - **Read routes** (the `GET /external-users/{ref}/…` rows above) — exchange
+     the API key for a **partner-session JWT** scoped to that `{ref}`, then
+     send `Authorization: Bearer <jwt>`. See *Minting partner-session JWTs*
+     below. The ATS rejects the raw API key on these routes.
 4. **Forward** the method, query string and JSON body upstream, then return the
    ATS response — status code and body — **verbatim**, so the widget's unified
    error envelope handling keeps working.
 
-So `GET {proxy}/external-users/u-42/works?network=testnet` becomes
+So `GET {proxy}/external-users/u-42/works?network=testnet` becomes a
+partner-session-authenticated
 `GET {ats}/v1/organizations/{org}/external-users/u-42/works?network=testnet`,
-and `POST {proxy}/works/1024/versions/prepare` becomes
+and `POST {proxy}/works/1024/versions/prepare` becomes an API-key-authenticated
 `POST {ats}/v1/organizations/{org}/works/1024/versions/prepare`.
 
-The B2B reverse-lookup needs the `works:read` scope on the key; the version
-endpoints need `works:update`.
+The B2B reverse-lookup (read) routes need the `works:read` scope on the key;
+the version endpoints need `works:update`.
+
+### Minting partner-session JWTs
+
+The read routes are authenticated by a JWT minted on the **organizations**
+service (not the ATS) from the org API key:
+
+```
+POST {organizationsUrl}/v1/organizations/{organization_id}/partner-sessions
+Authorization: Bearer afo_sk_live_…             ← API key, server-side only
+Content-Type: application/json
+
+{ "external_user_ref": "u-42" }                  ← exactly the {ref} in the URL
+```
+
+Response:
+
+```jsonc
+{
+  "token":       "eyJ…",       // HS256 JWT, ship in Authorization: Bearer …
+  "expires_at":  1747555200,   // unix seconds, default TTL ~60 min
+  "ttl_seconds": 3600
+}
+```
+
+The JWT is pinned to `(organization_id, external_user_ref)`: the ATS rejects
+it on any other path. The API key must carry the `works:read` scope.
+
+Tokens are reusable until they expire, so production BFFs **must** cache them
+keyed on `(organization_id, external_user_ref)` to avoid re-minting on every
+request. Refresh a minute before `expires_at` to absorb clock skew and
+in-flight time, and invalidate the cache entry on a `401` from the ATS — that
+signals the underlying API key was rotated or revoked. The demo proxy does
+both in process memory; a horizontally-scaled host should back it with Redis
+or similar so all instances share a mint.
 
 ### The `search` parameter
 

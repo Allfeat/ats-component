@@ -19,8 +19,14 @@ export default defineNuxtConfig({
       "csk_0000000000000000000000000000000000000000000000000000000000000000",
 
     // B2B organization API key + id — used server-side by the ATS proxy route
-    // (/api/ats-proxy) to reach the user-scoped works endpoints. This key is a
-    // secret and is never exposed to the browser. Override via
+    // (/api/ats-proxy) for two things: (1) authenticating the write surface
+    // (`/v1/organizations/{org}/works/{init,prepare,confirm}` and version
+    // updates) and (2) minting short-lived partner-session JWTs against
+    // `organizationsUrl` for the read surface
+    // (`/v1/organizations/{org}/external-users/{ref}/…`), since the ATS no
+    // longer accepts the raw API key on those routes. The key needs both the
+    // `works:register`/`works:update` scopes (writes) and `works:read`
+    // (mint), is a secret, and is never exposed to the browser. Override via
     // NUXT_ATS_API_KEY / NUXT_ORGANIZATION_ID.
     atsApiKey: "afo_sk_live_000000000000000000000000000000000000000000000000",
     organizationId: "00000000-0000-0000-0000-000000000000",

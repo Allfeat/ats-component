@@ -362,11 +362,15 @@ export async function downloadCertificate(
 // ============================================
 //
 // The ATS exposes these as B2B endpoints under
-// `/v1/organizations/{org}/external-users/{ref}/…`, authenticated with a
-// secret organization API key. That key must never reach the browser, so the
-// widget instead calls a host-provided BFF proxy (the `proxy-url` attribute):
-// the host's backend injects the API key + organization id and forwards
-// upstream.
+// `/v1/organizations/{org}/external-users/{ref}/…` (reads) and
+// `/v1/organizations/{org}/works/…` (writes). They use two different
+// credentials upstream — the read routes require a short-lived partner-session
+// JWT pinned to `(organization_id, external_user_ref)`; the write routes use
+// the long-lived organization API key directly. Neither belongs in the
+// browser, so the widget calls a host-provided BFF proxy (the `proxy-url`
+// attribute) which picks the right credential per request. See
+// `docs/api/user-scoped-works.md` and the reference proxy at
+// `demo/server/api/ats-proxy/[...].ts`.
 //
 // `proxyUrl` below is therefore the host proxy base, not the ATS URL. The
 // widget still passes its session token + site key so the host can
