@@ -110,7 +110,7 @@ import styles from './styles/component.css';
 // ============================================
 
 export class AllfeatRegister extends HTMLElement {
-  static observedAttributes = ['site-key', 'token', 'ats-url', 'proxy-url', 'network', 'mode', 'max-file-size', 'external-user-id'];
+  static observedAttributes = ['site-key', 'token', 'ats-url', 'organization-id', 'network', 'mode', 'max-file-size', 'external-user-id'];
 
   private shadow: ShadowRoot;
   private state: ComponentState;
@@ -146,12 +146,16 @@ export class AllfeatRegister extends HTMLElement {
   }
 
   /**
-   * Host BFF proxy base URL for the user-scoped works flows (download + update).
-   * The host's backend forwards these calls to the ATS B2B endpoints, injecting
-   * its organization API key — a secret that must never reach the browser.
+   * Organization integration id (UUID) — required for the external-user
+   * flows so the widget can compose the org-scoped ATS URLs directly
+   * (`/v1/organizations/{org}/external-users/{ref}/...` for reads,
+   * `/v1/organizations/{org}/works/...` for writes). The host backend
+   * already knows this id (it's the org the mint endpoint was called
+   * against), so passing it as an attribute is cheap; the widget never
+   * needs to resolve it on its own.
    */
-  get proxyUrl(): string {
-    return this.getAttribute('proxy-url') || '';
+  get organizationId(): string {
+    return this.getAttribute('organization-id') || '';
   }
 
   get network(): Network {
@@ -299,10 +303,11 @@ export class AllfeatRegister extends HTMLElement {
         this.render();
         break;
 
-      case 'proxy-url':
-        // The user-scoped flows reach the ATS through the host BFF proxy. If
-        // the proxy URL is set after `mode`/`external-user-id`, kick off any
-        // list load that was deferred because the proxy wasn't configured yet.
+      case 'organization-id':
+        // The external-user flows compose org-scoped URLs against ats-url
+        // directly. If `organization-id` arrives after `mode`/`external-
+        // user-id` (host pages set attrs in any order), kick off the list
+        // load that was deferred because the org id wasn't known yet.
         if (newValue
             && this.hasExternalUser
             && this.state.workList.status === 'idle'
@@ -640,12 +645,13 @@ export class AllfeatRegister extends HTMLElement {
       return;
     }
 
-    // The B2B proxy flows authenticate server-side with the organization API
-    // key, so they need neither a session token nor a site key. The
-    // session-token flows (no external user id) require both.
-    const usesProxyAuth = this.hasExternalUser && !!this.proxyUrl;
-
-    if (!usesProxyAuth && !this.token) {
+    // Both flows now use a bearer token on the `token` attribute — a session
+    // JWT for the non-external-user flow, a partner-session JWT for the
+    // external-user flow. `site-key` is widget-session metadata and is
+    // ignored on the B2B routes; we only enforce it for the non-external
+    // flow. The external flow additionally needs `organization-id` so the
+    // widget can compose org-scoped URLs.
+    if (!this.token) {
       container.innerHTML = `
         <div class="ats-alert ats-alert-error">
           <strong>Authentication required:</strong><br />
@@ -655,7 +661,17 @@ export class AllfeatRegister extends HTMLElement {
       return;
     }
 
-    if (!usesProxyAuth && !this.siteKey) {
+    if (this.hasExternalUser && !this.organizationId) {
+      container.innerHTML = `
+        <div class="ats-alert ats-alert-error">
+          <strong>Configuration Error:</strong><br />
+          Please set the <code>organization-id</code> attribute when <code>external-user-id</code> is set.
+        </div>
+      `;
+      return;
+    }
+
+    if (!this.hasExternalUser && !this.siteKey) {
       container.innerHTML = `
         <div class="ats-alert ats-alert-error">
           <strong>Configuration Error:</strong><br />
@@ -1296,12 +1312,10 @@ export class AllfeatRegister extends HTMLElement {
   private async handleSubmit(): Promise<void> {
     if (this.state.submitting) return;
 
-    // The B2B proxy flows (register / update for an external user) authenticate
-    // server-side with the organization API key — no session token is needed.
-    // Only the session-token paths (register without a proxy, access-code
-    // update) do.
-    const usesProxyAuth = this.hasExternalUser && !!this.proxyUrl;
-    if (!usesProxyAuth && !this.token) {
+    // Both flows present a bearer token on the `token` attribute — a session
+    // JWT for non-external-user mode, a partner-session JWT for external-
+    // user mode. Either way, missing token = no work to do.
+    if (!this.token) {
       this.transitionToFailed('No authentication token provided. Please set the token attribute.', null, null);
       return;
     }
@@ -1354,11 +1368,12 @@ export class AllfeatRegister extends HTMLElement {
   // ============================================
 
   private async executeRegisterFlow(formState: typeof this.state.formState): Promise<void> {
-    // With a proxy + external user id, register through the ATS B2B routes so
-    // the work is tagged with `external_user_ref` (the direct route ignores it)
-    // and authenticated by the organization API key — no session token needed.
-    if (this.hasExternalUser && this.proxyUrl) {
-      await this.executeRegisterFlowViaProxy(formState);
+    // External-user mode registers through the ATS B2B routes so the work is
+    // tagged with `external_user_ref` (the direct route ignores it). The
+    // widget hits ATS directly with the partner-session JWT it was given on
+    // the `token` attribute; no per-request host proxy is involved.
+    if (this.hasExternalUser) {
+      await this.executeRegisterFlowForExternalUser(formState);
     } else {
       await this.executeRegisterFlowWithToken(formState);
     }
@@ -1421,19 +1436,21 @@ export class AllfeatRegister extends HTMLElement {
 
   /**
    * Register path for the external-user flow. Calls the ATS B2B register
-   * endpoints through the host BFF proxy (which injects the organization API
-   * key), tagging the work with `external_user_ref` so it surfaces in that
-   * user's download / update lists.
+   * endpoints directly, authenticated by the partner-session JWT the host
+   * placed on the `token` attribute. The JWT is pinned to
+   * `(organization_id, external_user_ref)`; the ATS overrides any body-
+   * supplied `external_user_ref` with that pin, so the field travels in the
+   * body purely for the shared request schema.
    */
-  private async executeRegisterFlowViaProxy(formState: typeof this.state.formState): Promise<void> {
+  private async executeRegisterFlowForExternalUser(formState: typeof this.state.formState): Promise<void> {
     const file = formState.file;
     if (!file) {
       this.transitionToFailed('No file selected', null, null);
       return;
     }
-    if (!this.externalUserId || !this.proxyUrl) {
+    if (!this.externalUserId || !this.organizationId) {
       this.transitionToFailed(
-        'Registration is not configured: a proxy URL and external user id are required.',
+        'Registration is not configured: external-user-id and organization-id are required.',
         null,
         'widget.register_not_configured',
       );
@@ -1444,7 +1461,7 @@ export class AllfeatRegister extends HTMLElement {
 
     // Step 1: Init
     const initResponse = await initUserWork(
-      this.proxyUrl, this.token, this.siteKey,
+      this.atsUrl, this.organizationId, this.token, this.siteKey,
       {
         title: formState.title,
         creators,
@@ -1465,7 +1482,7 @@ export class AllfeatRegister extends HTMLElement {
     this.render();
 
     const prepareResponse = await prepareUserWork(
-      this.proxyUrl, this.token, this.siteKey,
+      this.atsUrl, this.organizationId, this.token, this.siteKey,
       { job_id: initResponse.job_id },
     );
 
@@ -1473,7 +1490,7 @@ export class AllfeatRegister extends HTMLElement {
 
     // Step 4: Confirm
     const confirmResponse = await confirmUserWork(
-      this.proxyUrl, this.token, this.siteKey,
+      this.atsUrl, this.organizationId, this.token, this.siteKey,
       { job_id: initResponse.job_id },
     );
 
@@ -1550,10 +1567,9 @@ export class AllfeatRegister extends HTMLElement {
   }
 
   /**
-   * Update path for the external-user flow. The ATS B2B version endpoints are
-   * keyed by the work's numeric ATS id and scoped to the organization (the
-   * host BFF proxy injects the API key + org), so each call is authorized by
-   * `work.atsId` rather than an access code.
+   * Update path for the external-user flow. The ATS B2B version endpoints
+   * are keyed by the work's numeric ATS id and scoped to the organization;
+   * the widget hits them directly with the partner-session JWT.
    */
   private async executeUpdateFlowByWorkId(formState: typeof this.state.formState): Promise<void> {
     const work = this.state.selectedWork;
@@ -1561,9 +1577,9 @@ export class AllfeatRegister extends HTMLElement {
       this.transitionToFailed('No work selected for update.', null, 'widget.no_work_selected');
       return;
     }
-    if (!this.externalUserId || !this.proxyUrl) {
+    if (!this.externalUserId || !this.organizationId) {
       this.transitionToFailed(
-        'Update is not configured: a proxy URL and external user id are required.',
+        'Update is not configured: external-user-id and organization-id are required.',
         null,
         'widget.update_not_configured',
       );
@@ -1577,7 +1593,7 @@ export class AllfeatRegister extends HTMLElement {
 
     if (file) {
       const initResponse = await initUserWorkVersionUpload(
-        this.proxyUrl, this.token, this.siteKey, work.atsId,
+        this.atsUrl, this.organizationId, this.token, this.siteKey, work.atsId,
         { creators, filename: file.name, network },
       );
       jobId = initResponse.job_id;
@@ -1586,7 +1602,7 @@ export class AllfeatRegister extends HTMLElement {
       await this.performUpload(initResponse.upload_url, file);
     } else {
       const initResponse = await initUserWorkVersion(
-        this.proxyUrl, this.token, this.siteKey, work.atsId,
+        this.atsUrl, this.organizationId, this.token, this.siteKey, work.atsId,
         { creators, network },
       );
       jobId = initResponse.job_id;
@@ -1597,12 +1613,12 @@ export class AllfeatRegister extends HTMLElement {
     this.render();
 
     await prepareUserWorkVersion(
-      this.proxyUrl, this.token, this.siteKey, work.atsId,
+      this.atsUrl, this.organizationId, this.token, this.siteKey, work.atsId,
       { job_id: jobId },
     );
 
     const confirmResponse = await confirmUserWorkVersion(
-      this.proxyUrl, this.token, this.siteKey, work.atsId,
+      this.atsUrl, this.organizationId, this.token, this.siteKey, work.atsId,
       { job_id: jobId },
     );
 
@@ -1739,7 +1755,7 @@ export class AllfeatRegister extends HTMLElement {
    */
   private async loadUserWorks(opts: { append?: boolean; quiet?: boolean } = {}): Promise<void> {
     if (!this.externalUserId) return;
-    if (!this.proxyUrl) return;
+    if (!this.atsUrl || !this.organizationId) return;
 
     const hasExistingWorks = this.state.workList.works.length > 0;
     if (!opts.quiet || !hasExistingWorks) {
@@ -1756,7 +1772,8 @@ export class AllfeatRegister extends HTMLElement {
     try {
       const search = this.state.workList.search.trim() || null;
       const response = await listUserWorks(
-        this.proxyUrl,
+        this.atsUrl,
+        this.organizationId,
         this.token,
         this.siteKey,
         this.externalUserId,
@@ -1825,7 +1842,7 @@ export class AllfeatRegister extends HTMLElement {
     dispatchDownloadStarted(this, { workId: work.id, kind: 'asset' });
     try {
       const { url } = await downloadUserWorkVersionAsset(
-        this.proxyUrl, this.token, this.siteKey, this.externalUserId, work.id, version,
+        this.atsUrl, this.organizationId, this.token, this.siteKey, this.externalUserId, work.id, version,
       );
       openPresignedDownload(url);
       dispatchDownloadComplete(this, { workId: work.id, kind: 'asset' });
@@ -1983,7 +2000,7 @@ export class AllfeatRegister extends HTMLElement {
     dispatchDownloadStarted(this, { workId: work.id, kind: 'certificate' });
     try {
       const { url } = await downloadUserWorkVersionCertificate(
-        this.proxyUrl, this.token, this.siteKey, this.externalUserId, work.id, version,
+        this.atsUrl, this.organizationId, this.token, this.siteKey, this.externalUserId, work.id, version,
       );
       openPresignedDownload(url);
       dispatchDownloadComplete(this, { workId: work.id, kind: 'certificate' });
@@ -2189,12 +2206,12 @@ export class AllfeatRegister extends HTMLElement {
     if (!this.state.completionData || !this.state.workId) return;
 
     try {
-      // B2B flow: download through the proxy (organization API key), since the
-      // success screen has no session token. Session-token flow: direct ATS.
-      const usesProxyAuth = this.hasExternalUser && !!this.proxyUrl;
-      const { url } = usesProxyAuth
+      // External-user flow: hit the B2B download route directly, authorized
+      // by the partner-session JWT on `token`. Session-token flow: direct
+      // ATS via the `/v1/works/{id}/download/certificate` route.
+      const { url } = this.hasExternalUser
         ? await downloadUserWorkCertificate(
-            this.proxyUrl, this.token, this.siteKey, this.externalUserId!, this.state.workId,
+            this.atsUrl, this.organizationId, this.token, this.siteKey, this.externalUserId!, this.state.workId,
           )
         : await downloadCertificate(
             this.atsUrl, this.token, this.siteKey, this.state.workId,
