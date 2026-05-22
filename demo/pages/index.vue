@@ -11,6 +11,10 @@ const config = reactive({
   allowedAtsId: "",
   mode: "register" as "register" | "update" | "download",
   externalUserId: "",
+  // Organization integration id — required when `externalUserId` is set, so
+  // the widget can compose org-scoped ATS URLs. Empty for the
+  // session-token (non-external-user) flow.
+  organizationId: "",
   primaryColor: "#4DB8A8",
   radius: "8px",
   font: "",
@@ -76,24 +80,38 @@ function syntaxHighlightJSON(obj: unknown): string {
 }
 
 // --------------- Token management ---------------
-// `register` and the legacy access-code `update` path use a widget session
-// token. `download` (and `update` with an external user id) instead reach the
-// ATS through the BFF proxy, so they need no token — see `initializeFlow`.
+// Every flow gets a widget session token from `POST /v1/sessions`. The
+// `action_type` claim narrows what the token can do:
+//   - `register` / `update_version` / `access` → user-scoped surface
+//     (`/v1/works/*`, `/v1/access/{code}/*`).
+//   - `external_user` (with an `external_user_ref` claim) → org-scoped
+//     surface (`/v1/organizations/{org}/...`), authorizing read + register
+//     + update on that one end-user's portfolio.
+// Setting `externalUserId` in the config form switches the mint into the
+// external-user mode; clearing it falls back to the widget action types.
 async function requestToken() {
-  const actionType = config.mode === "update" ? "update_version" : "register";
-
   if (!config.organizationsUrl || !config.secretKey) {
     throw new Error("Organizations URL and Secret Key are required");
   }
+
+  const useExternalUser = !!config.externalUserId;
+  const actionType = useExternalUser
+    ? "external_user"
+    : config.mode === "update"
+      ? "update_version"
+      : "register";
 
   const body: Record<string, unknown> = {
     organizations_url: config.organizationsUrl,
     secret_key: config.secretKey,
     action_type: actionType,
-    allowed_network: config.mode === "register" ? config.network : null,
+    allowed_network:
+      useExternalUser || config.mode === "register" ? config.network : null,
   };
 
-  if (config.mode !== "register" && config.allowedAtsId) {
+  if (useExternalUser) {
+    body.external_user_ref = config.externalUserId;
+  } else if (config.mode !== "register" && config.allowedAtsId) {
     body.allowed_ats_id = Number(config.allowedAtsId);
   }
 
@@ -101,6 +119,7 @@ async function requestToken() {
     token: string;
     expires_in: number;
     network?: string;
+    organization_id?: string;
   }>("/api/token", {
     method: "POST",
     body,
@@ -120,30 +139,16 @@ async function initializeFlow() {
     widget.setAttribute("ats-url", config.atsUrl);
     widget.setAttribute("site-key", config.siteKey);
     widget.setAttribute("network", config.network);
-    // `proxy-url` routes the user-scoped flows (download, and update with an
-    // external user id) through the BFF proxy that holds the organization API key.
-    widget.setAttribute("proxy-url", "/api/ats-proxy");
 
-    // External user id is shared by update + download flows; remove when empty so the
-    // widget falls back to the legacy access-code path for `update`.
+    // External user id is shared by register/update/download flows. Setting
+    // it switches the widget onto the B2B routes; clearing it falls back to
+    // the session-token flow (and, for update, the access-code path).
     if (config.externalUserId) {
       widget.setAttribute("external-user-id", config.externalUserId);
+      widget.setAttribute("organization-id", config.organizationId);
     } else {
       widget.removeAttribute("external-user-id");
-    }
-
-    // Download mode is fully proxy-backed — it carries no widget session token.
-    if (config.mode === "download") {
-      widget.setAttribute("mode", config.mode);
-      setStatus("ok", "Download mode ready — works load via the BFF proxy");
-      logEvent("ats:widget-configured", {
-        atsUrl: config.atsUrl,
-        mode: config.mode,
-        ...(config.externalUserId
-          ? { externalUserId: config.externalUserId }
-          : {}),
-      });
-      return;
+      widget.removeAttribute("organization-id");
     }
 
     setStatus("warn", "Requesting token from BFF...");
@@ -153,6 +158,7 @@ async function initializeFlow() {
       expires_in,
       network,
       tokenPreview: token.substring(0, 30) + "...",
+      kind: config.externalUserId ? "external-user" : "widget",
     });
 
     if (network) {
@@ -167,17 +173,18 @@ async function initializeFlow() {
       "ok",
       `Token set (${expires_in}s TTL)${network ? ` — network: ${network}` : ""} — widget ready`,
     );
-    const configLog: Record<string, string> = {
+    logEvent("ats:widget-configured", {
       atsUrl: config.atsUrl,
       mode: config.mode,
-    };
-    if (network) {
-      configLog.network = network;
-    }
-    if (config.externalUserId) {
-      configLog.externalUserId = config.externalUserId;
-    }
-    logEvent("ats:widget-configured", configLog);
+      ...(network ? { network } : {}),
+      ...(config.externalUserId
+        ? {
+            externalUserId: config.externalUserId,
+            organizationId: config.organizationId,
+            kind: "external-user",
+          }
+        : { kind: "widget" }),
+    });
   } catch (err: any) {
     const msg =
       err?.data?.message ||
@@ -190,13 +197,6 @@ async function initializeFlow() {
 }
 
 async function refreshToken() {
-  if (config.mode === "download") {
-    setStatus(
-      "ok",
-      "Download mode is proxy-backed — no session token to refresh",
-    );
-    return;
-  }
   setStatus("warn", "Manual token refresh...");
   logEvent("ats:manual-refresh", {});
 
@@ -255,14 +255,12 @@ onMounted(() => {
   const widget = widgetRef.value;
   if (!widget) return;
 
-  // Token expired or reset → auto-refresh via BFF
+  // Token expired or reset → auto-refresh via BFF. `requestToken`
+  // routes itself to widget vs external-user mode based on whether
+  // externalUserId is currently set.
   widget.addEventListener("allfeat:token-expired", async (e: Event) => {
     const detail = (e as CustomEvent).detail;
     logEvent("allfeat:token-expired", detail);
-    if (config.mode === "download") {
-      // Download mode is proxy-backed and carries no session token.
-      return;
-    }
     const isReset = detail?.pendingAction === "reset";
     setStatus(
       "warn",
@@ -419,11 +417,19 @@ const activeTab = ref<"client" | "backend" | "custom">("client");
           />
         </div>
         <div class="config-field full">
-          <label>External User ID (for update + download)</label>
+          <label>External User ID (switches to the B2B partner-session flow)</label>
           <input
             v-model="config.externalUserId"
             type="text"
-            placeholder="usr_... (leave empty for legacy access-code update)"
+            placeholder="usr_... (leave empty for the session-token / access-code path)"
+          />
+        </div>
+        <div v-show="config.externalUserId" class="config-field full">
+          <label>Organization ID (UUID, required when External User ID is set)</label>
+          <input
+            v-model="config.organizationId"
+            type="text"
+            placeholder="00000000-0000-0000-0000-000000000000"
           />
         </div>
         <div class="config-section">

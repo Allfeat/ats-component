@@ -696,7 +696,7 @@ function renderWorkDetailPanel(
         </div>
         <div>
           <div class="ats-summary-label">Created</div>
-          <div class="ats-summary-value">${formatShortDate(w.createdAt)}</div>
+          <div class="ats-summary-value">${formatShortDate(w.updatedAt)}</div>
         </div>
       </div>
       <div class="ats-work-detail-commitment">
@@ -887,8 +887,8 @@ function renderVersionCreatorsPanel(entry: VersionCreatorsEntry | undefined): st
           <tr>
             <th>Name</th>
             <th>Roles</th>
-            <th>IPI</th>
-            <th>ISNI</th>
+            <th class="ats-creators-col-code">IPI</th>
+            <th class="ats-creators-col-code">ISNI</th>
           </tr>
         </thead>
         <tbody>

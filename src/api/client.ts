@@ -358,32 +358,40 @@ export async function downloadCertificate(
 }
 
 // ============================================
-// User-Scoped Works (external-user-id) — via host BFF proxy
+// User-Scoped Works (external-user-id) — direct against ATS, partner-session JWT
 // ============================================
 //
-// The ATS exposes these as B2B endpoints under
-// `/v1/organizations/{org}/external-users/{ref}/…`, authenticated with a
-// secret organization API key. That key must never reach the browser, so the
-// widget instead calls a host-provided BFF proxy (the `proxy-url` attribute):
-// the host's backend injects the API key + organization id and forwards
-// upstream.
-//
-// `proxyUrl` below is therefore the host proxy base, not the ATS URL. The
-// widget still passes its session token + site key so the host can
-// authenticate the widget→BFF hop if it wishes; the demo proxy ignores them.
+// When the host sets `external-user-id` on the widget, every call below
+// goes **directly** to the ATS B2B routes under
+// `/v1/organizations/{org}/external-users/{ref}/…` (reads) and
+// `/v1/organizations/{org}/works/…` (writes). The widget bears no
+// secret of its own: the `token` attribute carries a short-lived
+// partner-session JWT minted server-side by the host (against the
+// organizations service) and pinned to `(organization_id,
+// external_user_ref)` with `works:read` / `works:register` /
+// `works:update` scopes. The ATS verifies the JWT, hydrates the minting
+// key's org context, and runs the same handlers it would under a raw
+// API key — so the widget→BFF request-proxy hop the older versions used
+// is no longer needed. See `docs/api/user-scoped-works.md`.
 
-/** Path-segment-encode an external user reference for use in a proxy URL. */
+/** Path-segment-encode an external user reference for use in the ATS URL. */
 function euid(externalUserId: string): string {
   return encodeURIComponent(externalUserId);
 }
 
+/** Compose the org-scoped ATS base for the external-user routes. */
+function orgBase(atsUrl: string, organizationId: string): string {
+  return `${atsUrl.replace(/\/+$/, '')}/v1/organizations/${encodeURIComponent(organizationId)}`;
+}
+
 /**
- * List the works registered for an external user. Proxied to the ATS B2B
- * listing, which embeds each work's full version history inline (there is no
- * separate per-work versions endpoint).
+ * List the works registered for an external user. The ATS B2B listing
+ * embeds each work's full version history inline (there is no separate
+ * per-work versions endpoint).
  */
 export async function listUserWorks(
-  proxyUrl: string,
+  atsUrl: string,
+  organizationId: string,
   token: string,
   siteKey: string,
   externalUserId: string,
@@ -394,26 +402,21 @@ export async function listUserWorks(
   if (opts.first != null) params.set('first', String(opts.first));
   if (opts.after) params.set('after', opts.after);
   if (opts.search) params.set('search', opts.search);
-  const url = buildUrl(
-    proxyUrl,
-    `/external-users/${euid(externalUserId)}/works?${params.toString()}`,
-  );
+  const url = `${orgBase(atsUrl, organizationId)}/external-users/${euid(externalUserId)}/works?${params.toString()}`;
   return apiFetch<ListUserWorksResponse>(url, token, siteKey, { method: 'GET' });
 }
 
 /** Get a presigned URL to download a specific version's audio asset. */
 export async function downloadUserWorkVersionAsset(
-  proxyUrl: string,
+  atsUrl: string,
+  organizationId: string,
   token: string,
   siteKey: string,
   externalUserId: string,
   workId: string,
   version: number,
 ): Promise<DownloadAssetResponse> {
-  const url = buildUrl(
-    proxyUrl,
-    `/external-users/${euid(externalUserId)}/works/${encodeURIComponent(workId)}/versions/${version}/download/audio`,
-  );
+  const url = `${orgBase(atsUrl, organizationId)}/external-users/${euid(externalUserId)}/works/${encodeURIComponent(workId)}/versions/${version}/download/audio`;
   return apiFetch<DownloadAssetResponse>(url, token, siteKey, { method: 'GET' });
 }
 
@@ -423,32 +426,28 @@ export async function downloadUserWorkVersionAsset(
  * used by the post-registration success screen, which has no session token.
  */
 export async function downloadUserWorkCertificate(
-  proxyUrl: string,
+  atsUrl: string,
+  organizationId: string,
   token: string,
   siteKey: string,
   externalUserId: string,
   workId: string,
 ): Promise<DownloadCertificateResponse> {
-  const url = buildUrl(
-    proxyUrl,
-    `/external-users/${euid(externalUserId)}/works/${encodeURIComponent(workId)}/download/certificate`,
-  );
+  const url = `${orgBase(atsUrl, organizationId)}/external-users/${euid(externalUserId)}/works/${encodeURIComponent(workId)}/download/certificate`;
   return apiFetch<DownloadCertificateResponse>(url, token, siteKey, { method: 'GET' });
 }
 
 /** Get a presigned URL to download a specific version's certificate PDF. */
 export async function downloadUserWorkVersionCertificate(
-  proxyUrl: string,
+  atsUrl: string,
+  organizationId: string,
   token: string,
   siteKey: string,
   externalUserId: string,
   workId: string,
   version: number,
 ): Promise<DownloadCertificateResponse> {
-  const url = buildUrl(
-    proxyUrl,
-    `/external-users/${euid(externalUserId)}/works/${encodeURIComponent(workId)}/versions/${version}/download/certificate`,
-  );
+  const url = `${orgBase(atsUrl, organizationId)}/external-users/${euid(externalUserId)}/works/${encodeURIComponent(workId)}/versions/${version}/download/certificate`;
   return apiFetch<DownloadCertificateResponse>(url, token, siteKey, { method: 'GET' });
 }
 
@@ -458,9 +457,13 @@ export async function downloadUserWorkVersionCertificate(
 // shapes. The crucial difference from the direct `/v1/works/*` path: the B2B
 // `init` honours `external_user_ref`, tagging the work to the end user so it
 // surfaces later in their download / update lists (the direct route ignores it).
+// The ATS overrides `external_user_ref` with the value pinned in the JWT, so
+// the field is required in the body for backwards-compat but the server is
+// authoritative.
 
 export async function initUserWork(
-  proxyUrl: string,
+  atsUrl: string,
+  organizationId: string,
   token: string,
   siteKey: string,
   data: {
@@ -471,7 +474,7 @@ export async function initUserWork(
     external_user_ref: string;
   },
 ): Promise<InitWorkResponse> {
-  const url = buildUrl(proxyUrl, '/works/init');
+  const url = `${orgBase(atsUrl, organizationId)}/works/init`;
   return apiFetch<InitWorkResponse>(url, token, siteKey, {
     method: 'POST',
     body: JSON.stringify(data),
@@ -479,12 +482,13 @@ export async function initUserWork(
 }
 
 export async function prepareUserWork(
-  proxyUrl: string,
+  atsUrl: string,
+  organizationId: string,
   token: string,
   siteKey: string,
   data: { job_id: string },
 ): Promise<PrepareWorkResponse> {
-  const url = buildUrl(proxyUrl, '/works/prepare');
+  const url = `${orgBase(atsUrl, organizationId)}/works/prepare`;
   return apiFetch<PrepareWorkResponse>(url, token, siteKey, {
     method: 'POST',
     body: JSON.stringify({ ...data, passphrase: null }),
@@ -492,12 +496,13 @@ export async function prepareUserWork(
 }
 
 export async function confirmUserWork(
-  proxyUrl: string,
+  atsUrl: string,
+  organizationId: string,
   token: string,
   siteKey: string,
   data: { job_id: string },
 ): Promise<ConfirmWorkResponse> {
-  const url = buildUrl(proxyUrl, '/works/confirm');
+  const url = `${orgBase(atsUrl, organizationId)}/works/confirm`;
   return apiFetch<ConfirmWorkResponse>(url, token, siteKey, {
     method: 'POST',
     body: JSON.stringify(data),
@@ -509,13 +514,14 @@ export async function confirmUserWork(
 // `atsId`. `network` travels in the init bodies, matching the B2B contract.
 
 export async function initUserWorkVersionUpload(
-  proxyUrl: string,
+  atsUrl: string,
+  organizationId: string,
   token: string,
   siteKey: string,
   atsId: number,
   data: { creators: CreatorRequest[]; filename: string; network: string },
 ): Promise<InitWorkVersionUploadResponse> {
-  const url = buildUrl(proxyUrl, `/works/${atsId}/versions/init-upload`);
+  const url = `${orgBase(atsUrl, organizationId)}/works/${atsId}/versions/init-upload`;
   return apiFetch<InitWorkVersionUploadResponse>(url, token, siteKey, {
     method: 'POST',
     body: JSON.stringify(data),
@@ -523,13 +529,14 @@ export async function initUserWorkVersionUpload(
 }
 
 export async function initUserWorkVersion(
-  proxyUrl: string,
+  atsUrl: string,
+  organizationId: string,
   token: string,
   siteKey: string,
   atsId: number,
   data: { creators: CreatorRequest[]; network: string },
 ): Promise<InitWorkVersionResponse> {
-  const url = buildUrl(proxyUrl, `/works/${atsId}/versions/init`);
+  const url = `${orgBase(atsUrl, organizationId)}/works/${atsId}/versions/init`;
   return apiFetch<InitWorkVersionResponse>(url, token, siteKey, {
     method: 'POST',
     body: JSON.stringify(data),
@@ -537,13 +544,14 @@ export async function initUserWorkVersion(
 }
 
 export async function prepareUserWorkVersion(
-  proxyUrl: string,
+  atsUrl: string,
+  organizationId: string,
   token: string,
   siteKey: string,
   atsId: number,
   data: { job_id: string },
 ): Promise<PrepareWorkVersionResponse> {
-  const url = buildUrl(proxyUrl, `/works/${atsId}/versions/prepare`);
+  const url = `${orgBase(atsUrl, organizationId)}/works/${atsId}/versions/prepare`;
   return apiFetch<PrepareWorkVersionResponse>(url, token, siteKey, {
     method: 'POST',
     body: JSON.stringify(data),
@@ -551,13 +559,14 @@ export async function prepareUserWorkVersion(
 }
 
 export async function confirmUserWorkVersion(
-  proxyUrl: string,
+  atsUrl: string,
+  organizationId: string,
   token: string,
   siteKey: string,
   atsId: number,
   data: { job_id: string },
 ): Promise<ConfirmWorkVersionResponse> {
-  const url = buildUrl(proxyUrl, `/works/${atsId}/versions/confirm`);
+  const url = `${orgBase(atsUrl, organizationId)}/works/${atsId}/versions/confirm`;
   return apiFetch<ConfirmWorkVersionResponse>(url, token, siteKey, {
     method: 'POST',
     body: JSON.stringify(data),
