@@ -887,8 +887,8 @@ function renderVersionCreatorsPanel(entry: VersionCreatorsEntry | undefined): st
           <tr>
             <th>Name</th>
             <th>Roles</th>
-            <th>IPI</th>
-            <th>ISNI</th>
+            <th class="ats-creators-col-code">IPI</th>
+            <th class="ats-creators-col-code">ISNI</th>
           </tr>
         </thead>
         <tbody>

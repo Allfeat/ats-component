@@ -1489,6 +1489,22 @@
   overflow-wrap: anywhere;
 }
 
+/* IPI / ISNI are fixed-width tokens — never break them mid-code. The table
+   uses the browser's default `auto` layout, so `nowrap` + `width: 1%` makes
+   each code column size to exactly its content: it grows to fit the code on
+   one line when a value is present, and collapses toward the (short) header
+   width when the value is "—". The width freed by empty code columns is
+   handed to the flexible Name / Roles columns, letting a long creator name
+   or email sit on a single line. This is the automatic behaviour requested:
+   wide code columns only when there are codes, otherwise more room for the
+   rest. */
+.ats-version-creators-table thead th.ats-creators-col-code,
+.ats-version-creators-table tbody td.ats-monospace-sm {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  width: 1%;
+}
+
 .ats-version-creators-table tbody tr:last-child td {
   border-bottom: none;
 }
