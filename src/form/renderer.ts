@@ -696,7 +696,7 @@ function renderWorkDetailPanel(
         </div>
         <div>
           <div class="ats-summary-label">Created</div>
-          <div class="ats-summary-value">${formatShortDate(w.createdAt)}</div>
+          <div class="ats-summary-value">${formatShortDate(w.updatedAt)}</div>
         </div>
       </div>
       <div class="ats-work-detail-commitment">
