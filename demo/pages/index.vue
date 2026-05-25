@@ -11,10 +11,6 @@ const config = reactive({
   allowedAtsId: "",
   mode: "register" as "register" | "update" | "download",
   externalUserId: "",
-  // Organization integration id — required when `externalUserId` is set, so
-  // the widget can compose org-scoped ATS URLs. Empty for the
-  // session-token (non-external-user) flow.
-  organizationId: "",
   primaryColor: "#4DB8A8",
   radius: "8px",
   font: "",
@@ -81,32 +77,35 @@ function syntaxHighlightJSON(obj: unknown): string {
 
 // --------------- Token management ---------------
 // Every flow gets a widget session token from `POST /v1/sessions`. The
-// `action_type` claim narrows what the token can do:
-//   - `register` / `update_version` / `access` → user-scoped surface
-//     (`/v1/works/*`, `/v1/access/{code}/*`).
-//   - `external_user` (with an `external_user_ref` claim) → org-scoped
-//     surface (`/v1/organizations/{org}/...`), authorizing read + register
-//     + update on that one end-user's portfolio.
-// Setting `externalUserId` in the config form switches the mint into the
-// external-user mode; clearing it falls back to the widget action types.
+// `action_type` claim picks the action the token may perform:
+//   - `register`       → POST /v1/works/{init,prepare,confirm}
+//   - `update_version` → POST /v1/works/{id}/versions/...
+//   - `access`         → read surface (`GET /v1/works`, downloads) +
+//                        access-code lookups when no `external_user_ref`
+//                        claim is present.
+// Setting `externalUserId` adds an `external_user_ref` claim on the same
+// token. The widget then hits the same `/v1/works/...` surface but every
+// call is scoped server-side to that ref. Clearing `externalUserId` falls
+// back to the access-code path for update/download flows.
+function actionTypeForMode(mode: string): "register" | "update_version" | "access" {
+  if (mode === "register") return "register";
+  if (mode === "update") return "update_version";
+  return "access";
+}
+
 async function requestToken() {
   if (!config.organizationsUrl || !config.secretKey) {
     throw new Error("Organizations URL and Secret Key are required");
   }
 
   const useExternalUser = !!config.externalUserId;
-  const actionType = useExternalUser
-    ? "external_user"
-    : config.mode === "update"
-      ? "update_version"
-      : "register";
+  const actionType = actionTypeForMode(config.mode);
 
   const body: Record<string, unknown> = {
     organizations_url: config.organizationsUrl,
     secret_key: config.secretKey,
     action_type: actionType,
-    allowed_network:
-      useExternalUser || config.mode === "register" ? config.network : null,
+    allowed_network: config.network,
   };
 
   if (useExternalUser) {
@@ -119,7 +118,6 @@ async function requestToken() {
     token: string;
     expires_in: number;
     network?: string;
-    organization_id?: string;
   }>("/api/token", {
     method: "POST",
     body,
@@ -141,14 +139,13 @@ async function initializeFlow() {
     widget.setAttribute("network", config.network);
 
     // External user id is shared by register/update/download flows. Setting
-    // it switches the widget onto the B2B routes; clearing it falls back to
-    // the session-token flow (and, for update, the access-code path).
+    // it switches every `/v1/works/...` call into the ref-scoped surface
+    // (server-side via the JWT claim); clearing it falls back to access-
+    // code lookups for update/download.
     if (config.externalUserId) {
       widget.setAttribute("external-user-id", config.externalUserId);
-      widget.setAttribute("organization-id", config.organizationId);
     } else {
       widget.removeAttribute("external-user-id");
-      widget.removeAttribute("organization-id");
     }
 
     setStatus("warn", "Requesting token from BFF...");
@@ -180,7 +177,6 @@ async function initializeFlow() {
       ...(config.externalUserId
         ? {
             externalUserId: config.externalUserId,
-            organizationId: config.organizationId,
             kind: "external-user",
           }
         : { kind: "widget" }),
@@ -417,19 +413,11 @@ const activeTab = ref<"client" | "backend" | "custom">("client");
           />
         </div>
         <div class="config-field full">
-          <label>External User ID (switches to the B2B partner-session flow)</label>
+          <label>External User ID (adds an external_user_ref claim, scopes /v1/works/... server-side)</label>
           <input
             v-model="config.externalUserId"
             type="text"
-            placeholder="usr_... (leave empty for the session-token / access-code path)"
-          />
-        </div>
-        <div v-show="config.externalUserId" class="config-field full">
-          <label>Organization ID (UUID, required when External User ID is set)</label>
-          <input
-            v-model="config.organizationId"
-            type="text"
-            placeholder="00000000-0000-0000-0000-000000000000"
+            placeholder="usr_... (leave empty for the access-code path on update/download)"
           />
         </div>
         <div class="config-section">

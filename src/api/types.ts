@@ -307,31 +307,23 @@ export interface StatsResponse {
 // Download
 // ============================================
 
-/** Response from `GET /v1/works/{workId}/download/certificate`. */
-export interface DownloadCertificateResponse {
-  /** Pre-signed URL to download the certificate PDF. */
-  url: string;
-  /** ISO timestamp after which the download URL expires. */
-  expires_at: string;
-}
-
-/** Response from the version-scoped audio download endpoint. */
-export interface DownloadAssetResponse {
-  /** Pre-signed URL to download the asset file. */
+/** Response from any of the `/v1/works/{work_uuid}/...download/...` endpoints. */
+export interface DownloadUrlResponse {
+  /** Pre-signed URL to download the file. */
   url: string;
   /** ISO timestamp after which the download URL expires. */
   expires_at: string;
 }
 
 // ============================================
-// User-Scoped Works (external-user-id) — via host BFF proxy
+// Unified `/v1/works/...` listing + version queries
 // ============================================
 //
-// These types model the ATS B2B endpoints
-// (`/v1/organizations/{org}/external-users/{ref}/works…`). The widget never
-// calls them directly — a B2B API key is a server-side secret — it calls a
-// host-provided BFF proxy that injects the API key + organization id. The
-// shapes below are exactly what that proxy forwards back from the ATS service.
+// The widget hits the same `/v1/works/...` endpoints regardless of whether
+// it carries a widget session with an `external_user_ref` claim or a plain
+// session token. The server scopes the response to the caller — refless
+// widget sessions are rejected on this surface and must use the
+// `/v1/access/{code}/...` endpoints instead.
 
 /** Relay-style cursor pagination metadata. */
 export interface PageInfo {
@@ -342,76 +334,9 @@ export interface PageInfo {
 }
 
 /**
- * A single on-chain version of a work, embedded inline in `UserWork.versions`.
- *
- * Mirrors the ATS `WorkVersion` wire struct. The B2B listing exposes the
- * per-version `asset_filename`, but omits `media_hash` and `merkle_root`.
- */
-export interface WorkVersionApi {
-  /** Version number (1-based, monotonically increasing). */
-  version: number;
-  /** Cryptographic commitment hash for this version, prefixed `0x`. */
-  commitment: string;
-  /** Block number that registered this version. */
-  registered_at_block?: number | null;
-  /** ISO timestamp this version was registered on-chain. */
-  registered_at?: string | null;
-  /** Original uploaded filename for this version. */
-  asset_filename?: string;
-  /** Hash of the media file when this version was registered. Omitted by the B2B endpoint. */
-  media_hash?: string;
-  /** Merkle root of the version metadata. Omitted by the B2B endpoint. */
-  merkle_root?: string;
-  /** Hash of the block that included the transaction. */
-  block_hash?: string;
-  /** On-chain transaction hash for the version registration. */
-  tx_hash?: string;
-  /** Network + service fee in credits paid to register this version. */
-  fee_credits?: number;
-  /** Storage fee in credits paid to store this version's asset. */
-  storage_fee_credits?: number;
-  /**
-   * Creators credited on this version. The B2B works listing embeds creators
-   * inline per version; always present in the response (possibly empty).
-   */
-  creators?: WorkCreatorResponse[];
-}
-
-/**
- * A work registered for an external user, as returned by the B2B listing
- * (ATS `B2BWorkSummary`). The full version history is embedded inline —
- * there is no separate per-work versions endpoint.
- */
-export interface UserWork {
-  /** UUID work identifier — used as the download path parameter. */
-  id: string;
-  /** Numeric on-chain ATS id; `null` until the registration is confirmed on-chain. */
-  ats_id: number | null;
-  /** Network the work is registered on (`testnet` / `mainnet`). */
-  network: string;
-  /** User-supplied title. */
-  title: string;
-  /** Most recent version number. */
-  latest_version: number;
-  /** ISO timestamp of the work's first registration. */
-  created_at: string;
-  /** Echo of the queried external user reference. */
-  external_user_ref: string;
-  /** Full version history, oldest-first. */
-  versions: WorkVersionApi[];
-}
-
-/** Response from the B2B works listing (ATS `ListWorksByExternalUserRefResponse`). */
-export interface ListUserWorksResponse {
-  works: UserWork[];
-  page_info: PageInfo;
-  total_count: number;
-}
-
-/**
- * A creator credited on a version, embedded inline in `WorkVersionApi.creators`
- * by the B2B works listing. Mirrors the ATS `CreatorResponse` wire struct
- * field-for-field.
+ * Wire shape for a creator returned by `/v1/works/{ats_id}/creators` and
+ * `/v1/works/{ats_id}/versions/{v}/creators`. Mirrors the ATS
+ * `CreatorResponse` struct field-for-field.
  */
 export interface WorkCreatorResponse {
   full_name: string;
@@ -423,15 +348,78 @@ export interface WorkCreatorResponse {
 }
 
 /**
- * Aliases for the user-scoped version-update endpoints. The B2B version
- * endpoints delegate to the same inner handlers as the access-code variants,
- * so the response bodies are identical; kept as aliases so call-sites read
- * naturally.
+ * A single on-chain version row as returned by
+ * `GET /v1/works/{ats_id}/versions`. Mirrors the ATS `WorkVersion` wire struct.
  */
-export type InitWorkVersionUploadResponse = InitVersionUploadResponse;
-export type InitWorkVersionResponse = InitVersionResponse;
-export type PrepareWorkVersionResponse = PrepareVersionResponse;
-export type ConfirmWorkVersionResponse = ConfirmVersionResponse;
+export interface WorkVersionApi {
+  /** Version number (1-based, monotonically increasing). */
+  version: number;
+  /** Cryptographic commitment hash for this version, prefixed `0x`. */
+  commitment: string;
+  /** Block number that registered this version. */
+  registered_at_block?: number | null;
+  /** ISO timestamp this version was registered on-chain. */
+  registered_at?: string | null;
+  /** Hash of the media file when this version was registered. */
+  media_hash?: string;
+  /** Merkle root of the version metadata. */
+  merkle_root?: string;
+  /** Hash of the block that included the transaction. */
+  block_hash?: string;
+  /** On-chain transaction hash for the version registration. */
+  tx_hash?: string;
+  /** Network + service fee in credits paid to register this version. */
+  fee_credits?: number;
+  /** Storage fee in credits paid to store this version's asset. */
+  storage_fee_credits?: number;
+}
+
+/**
+ * A row in the unified works listing as returned by `GET /v1/works`.
+ * Mirrors the ATS `WorkSummary` wire struct.
+ */
+export interface WorkSummaryApi {
+  /** UUID work identifier — used as the path parameter on download routes. */
+  id: string;
+  /** Numeric on-chain ATS id, or `-1` while a registration is still pending on chain. */
+  ats_id: number;
+  /** SS58 address of the on-chain owner. */
+  owner: string;
+  /** Most recent version number. */
+  latest_version: number;
+  /** Commitment hash of the latest version. */
+  latest_commitment?: string;
+  /** ISO timestamp of the work's first registration. */
+  created_at?: string;
+  /** ISO timestamp of the most recent version registration — used to order the list. */
+  latest_version_at?: string;
+  /** User-supplied title. */
+  title?: string;
+  /** Original filename of the latest version's asset. */
+  asset_filename?: string;
+  /** Whether storage is configured for this work (the download endpoints will resolve). */
+  has_files: boolean;
+}
+
+/** Response from `GET /v1/works`. */
+export interface ListWorksResponse {
+  works: WorkSummaryApi[];
+  page_info: PageInfo;
+  total_count?: number;
+}
+
+/** Response from `GET /v1/works/{ats_id}/versions`. */
+export interface ListVersionsResponse {
+  ats_id: number;
+  versions: WorkVersionApi[];
+}
+
+/** Response from `GET /v1/works/{ats_id}/creators` and the per-version variant. */
+export interface ListCreatorsResponse {
+  ats_id: number;
+  version: number;
+  creators: WorkCreatorResponse[];
+}
 
 // ============================================
 // Error Handling

@@ -18,13 +18,9 @@ export default defineNuxtConfig({
     secretKey:
       "csk_0000000000000000000000000000000000000000000000000000000000000000",
 
-    // Organization integration id (UUID) — used server-side by `/api/token`
-    // for the external-user mint flow. When the request body asks for
-    // `action_type: "external_user"`, the BFF echoes this id back so the
-    // demo pages can set the widget's `organization-id` attribute without
-    // a separate public copy. The id isn't a secret (it shows up in every
-    // ATS URL the browser hits) but keeping it server-routed avoids a
-    // second configuration source to keep in sync. Override via
+    // Organization integration id — kept around purely for debug logs in
+    // the dev console. The widget no longer needs it (every `/v1/works/...`
+    // call resolves the org server-side from the JWT). Override via
     // NUXT_ORGANIZATION_ID.
     organizationId: "00000000-0000-0000-0000-000000000000",
 

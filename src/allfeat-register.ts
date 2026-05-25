@@ -4,31 +4,30 @@ import {
   initWork,
   prepareWork,
   confirmWork,
-  initUserWork,
-  prepareUserWork,
-  confirmUserWork,
-  initVersionUpload,
-  initVersion,
-  prepareVersion,
-  confirmVersion,
+  initVersionUploadByAccessCode,
+  initVersionByAccessCode,
+  prepareVersionByAccessCode,
+  confirmVersionByAccessCode,
+  initWorkVersionUpload,
+  initWorkVersion,
+  prepareWorkVersion,
+  confirmWorkVersion,
   uploadFileToS3WithProgress,
   downloadCertificate,
+  downloadVersionAudio,
+  downloadVersionCertificate,
   subscribeToTransaction,
   pollTransactionStatus,
-  listUserWorks,
-  downloadUserWorkCertificate,
-  downloadUserWorkVersionAsset,
-  downloadUserWorkVersionCertificate,
-  initUserWorkVersionUpload,
-  initUserWorkVersion,
-  prepareUserWorkVersion,
-  confirmUserWorkVersion,
+  listWorks,
+  getWorkVersions,
+  getWorkCreators,
+  getVersionCreators,
 } from './api/client';
 import type {
   WidgetError,
   CreatorRequest,
   AccessWorkResponse,
-  UserWork,
+  WorkSummaryApi,
   WorkCreatorResponse,
   WorkVersionApi,
   WsStepDetails,
@@ -110,7 +109,7 @@ import styles from './styles/component.css';
 // ============================================
 
 export class AllfeatRegister extends HTMLElement {
-  static observedAttributes = ['site-key', 'token', 'ats-url', 'organization-id', 'network', 'mode', 'max-file-size', 'external-user-id'];
+  static observedAttributes = ['site-key', 'token', 'ats-url', 'network', 'mode', 'max-file-size', 'external-user-id'];
 
   private shadow: ShadowRoot;
   private state: ComponentState;
@@ -143,19 +142,6 @@ export class AllfeatRegister extends HTMLElement {
 
   get atsUrl(): string {
     return this.getAttribute('ats-url') || '';
-  }
-
-  /**
-   * Organization integration id (UUID) — required for the external-user
-   * flows so the widget can compose the org-scoped ATS URLs directly
-   * (`/v1/organizations/{org}/external-users/{ref}/...` for reads,
-   * `/v1/organizations/{org}/works/...` for writes). The host backend
-   * already knows this id (it's the org the mint endpoint was called
-   * against), so passing it as an attribute is cheap; the widget never
-   * needs to resolve it on its own.
-   */
-  get organizationId(): string {
-    return this.getAttribute('organization-id') || '';
   }
 
   get network(): Network {
@@ -299,21 +285,6 @@ export class AllfeatRegister extends HTMLElement {
             this.state.workList.status = 'error';
             this.state.workList.error = 'Download mode requires an external-user-id attribute.';
           }
-        }
-        this.render();
-        break;
-
-      case 'organization-id':
-        // The external-user flows compose org-scoped URLs against ats-url
-        // directly. If `organization-id` arrives after `mode`/`external-
-        // user-id` (host pages set attrs in any order), kick off the list
-        // load that was deferred because the org id wasn't known yet.
-        if (newValue
-            && this.hasExternalUser
-            && this.state.workList.status === 'idle'
-            && (this.state.screen === 'DOWNLOADS'
-                || (this.state.screen === 'FORM' && this.state.formSubStep === 'work_select'))) {
-          this.loadUserWorks();
         }
         this.render();
         break;
@@ -645,12 +616,10 @@ export class AllfeatRegister extends HTMLElement {
       return;
     }
 
-    // Both flows now use a bearer token on the `token` attribute — a session
-    // JWT for the non-external-user flow, a partner-session JWT for the
-    // external-user flow. `site-key` is widget-session metadata and is
-    // ignored on the B2B routes; we only enforce it for the non-external
-    // flow. The external flow additionally needs `organization-id` so the
-    // widget can compose org-scoped URLs.
+    // The widget always sends a Bearer JWT on `token` + the org's site key
+    // on `X-Site-Key`. The token's `external_user_ref` claim (if any) is
+    // what switches between the ref-scoped and access-code variants of
+    // the user-scoped flows — server-side, transparently to the widget.
     if (!this.token) {
       container.innerHTML = `
         <div class="ats-alert ats-alert-error">
@@ -661,17 +630,7 @@ export class AllfeatRegister extends HTMLElement {
       return;
     }
 
-    if (this.hasExternalUser && !this.organizationId) {
-      container.innerHTML = `
-        <div class="ats-alert ats-alert-error">
-          <strong>Configuration Error:</strong><br />
-          Please set the <code>organization-id</code> attribute when <code>external-user-id</code> is set.
-        </div>
-      `;
-      return;
-    }
-
-    if (!this.hasExternalUser && !this.siteKey) {
+    if (!this.siteKey) {
       container.innerHTML = `
         <div class="ats-alert ats-alert-error">
           <strong>Configuration Error:</strong><br />
@@ -1312,9 +1271,6 @@ export class AllfeatRegister extends HTMLElement {
   private async handleSubmit(): Promise<void> {
     if (this.state.submitting) return;
 
-    // Both flows present a bearer token on the `token` attribute — a session
-    // JWT for non-external-user mode, a partner-session JWT for external-
-    // user mode. Either way, missing token = no work to do.
     if (!this.token) {
       this.transitionToFailed('No authentication token provided. Please set the token attribute.', null, null);
       return;
@@ -1367,20 +1323,14 @@ export class AllfeatRegister extends HTMLElement {
   // Register Flow
   // ============================================
 
+  /**
+   * Register a new work. Calls `/v1/works/init` → S3 upload → `/v1/works/prepare`
+   * → `/v1/works/confirm`. Identical for refless widget sessions, widget
+   * sessions carrying an `external_user_ref` claim, and direct users — the
+   * server reads the ref off the JWT and tags the new work with it
+   * automatically, so the widget has nothing to add in the body.
+   */
   private async executeRegisterFlow(formState: typeof this.state.formState): Promise<void> {
-    // External-user mode registers through the ATS B2B routes so the work is
-    // tagged with `external_user_ref` (the direct route ignores it). The
-    // widget hits ATS directly with the partner-session JWT it was given on
-    // the `token` attribute; no per-request host proxy is involved.
-    if (this.hasExternalUser) {
-      await this.executeRegisterFlowForExternalUser(formState);
-    } else {
-      await this.executeRegisterFlowWithToken(formState);
-    }
-  }
-
-  /** Session-token register path: direct ATS `/v1/works/*`. */
-  private async executeRegisterFlowWithToken(formState: typeof this.state.formState): Promise<void> {
     const file = formState.file;
     if (!file) {
       this.transitionToFailed('No file selected', null, null);
@@ -1389,9 +1339,7 @@ export class AllfeatRegister extends HTMLElement {
 
     const creators = this.mapCreators(formState);
 
-    // Step 1: Init. When the host configured an external user id, tag the work
-    // with it so the registration surfaces in that user's download / update
-    // lists afterwards. Omitted otherwise (the field is optional server-side).
+    // Step 1: Init
     const initResponse = await initWork(
       this.atsUrl, this.token, this.siteKey,
       {
@@ -1399,7 +1347,6 @@ export class AllfeatRegister extends HTMLElement {
         creators,
         filename: file.name,
         network: this.network,
-        external_user_ref: this.externalUserId ?? undefined,
       },
     );
 
@@ -1434,78 +1381,20 @@ export class AllfeatRegister extends HTMLElement {
     await this.waitForTransaction(confirmResponse.ws_url, confirmResponse.status_url, confirmResponse.access_code);
   }
 
-  /**
-   * Register path for the external-user flow. Calls the ATS B2B register
-   * endpoints directly, authenticated by the partner-session JWT the host
-   * placed on the `token` attribute. The JWT is pinned to
-   * `(organization_id, external_user_ref)`; the ATS overrides any body-
-   * supplied `external_user_ref` with that pin, so the field travels in the
-   * body purely for the shared request schema.
-   */
-  private async executeRegisterFlowForExternalUser(formState: typeof this.state.formState): Promise<void> {
-    const file = formState.file;
-    if (!file) {
-      this.transitionToFailed('No file selected', null, null);
-      return;
-    }
-    if (!this.externalUserId || !this.organizationId) {
-      this.transitionToFailed(
-        'Registration is not configured: external-user-id and organization-id are required.',
-        null,
-        'widget.register_not_configured',
-      );
-      return;
-    }
-
-    const creators = this.mapCreators(formState);
-
-    // Step 1: Init
-    const initResponse = await initUserWork(
-      this.atsUrl, this.organizationId, this.token, this.siteKey,
-      {
-        title: formState.title,
-        creators,
-        filename: file.name,
-        network: this.network,
-        external_user_ref: this.externalUserId,
-      },
-    );
-
-    this.state.jobId = initResponse.job_id;
-    this.state.uploadUrl = initResponse.upload_url;
-
-    // Step 2: Upload
-    await this.performUpload(initResponse.upload_url, file);
-
-    // Step 3: Prepare
-    this.state.screen = 'CONFIRMING';
-    this.render();
-
-    const prepareResponse = await prepareUserWork(
-      this.atsUrl, this.organizationId, this.token, this.siteKey,
-      { job_id: initResponse.job_id },
-    );
-
-    this.state.workId = prepareResponse.work_id || null;
-
-    // Step 4: Confirm
-    const confirmResponse = await confirmUserWork(
-      this.atsUrl, this.organizationId, this.token, this.siteKey,
-      { job_id: initResponse.job_id },
-    );
-
-    this.state.transactionId = confirmResponse.transaction_id;
-    dispatchConfirmed(this, { transactionId: confirmResponse.transaction_id });
-
-    // Step 5: Track
-    this.transitionToScreen('TRACKING');
-    await this.waitForTransaction(confirmResponse.ws_url, confirmResponse.status_url, confirmResponse.access_code);
-  }
-
   // ============================================
   // Update Flow
   // ============================================
 
+  /**
+   * Two complementary update flows, picked by whether the token carries an
+   * `external_user_ref` claim:
+   * - **with ref** (`hasExternalUser`): the user has just picked a work
+   *   from the work-selector; we hit `/v1/works/{ats_id}/versions/...` and
+   *   the server enforces that `work.external_user_ref` matches the JWT.
+   * - **without ref**: the user typed an access code; we hit
+   *   `/v1/access/{code}/versions/...` and the server resolves the work
+   *   from the hashed code.
+   */
   private async executeUpdateFlow(formState: typeof this.state.formState): Promise<void> {
     if (this.hasExternalUser) {
       await this.executeUpdateFlowByWorkId(formState);
@@ -1514,7 +1403,7 @@ export class AllfeatRegister extends HTMLElement {
     }
   }
 
-  /** Access-code update path: uses access code as authorization for each version endpoint. */
+  /** Refless widget path: the access code identifies the work. */
   private async executeUpdateFlowByAccessCode(formState: typeof this.state.formState): Promise<void> {
     const creators = this.mapCreators(formState);
     const file = formState.file;
@@ -1523,7 +1412,7 @@ export class AllfeatRegister extends HTMLElement {
     let jobId: string;
 
     if (file) {
-      const initResponse = await initVersionUpload(
+      const initResponse = await initVersionUploadByAccessCode(
         this.atsUrl, this.token, this.siteKey, accessCode,
         { creators, filename: file.name },
       );
@@ -1534,7 +1423,7 @@ export class AllfeatRegister extends HTMLElement {
 
       await this.performUpload(initResponse.upload_url, file);
     } else {
-      const initResponse = await initVersion(
+      const initResponse = await initVersionByAccessCode(
         this.atsUrl, this.token, this.siteKey, accessCode,
         { creators },
       );
@@ -1547,13 +1436,13 @@ export class AllfeatRegister extends HTMLElement {
     this.state.screen = 'CONFIRMING';
     this.render();
 
-    await prepareVersion(
+    await prepareVersionByAccessCode(
       this.atsUrl, this.token, this.siteKey, accessCode,
       { job_id: jobId },
     );
 
     // Confirm
-    const confirmResponse = await confirmVersion(
+    const confirmResponse = await confirmVersionByAccessCode(
       this.atsUrl, this.token, this.siteKey, accessCode,
       { job_id: jobId },
     );
@@ -1567,9 +1456,9 @@ export class AllfeatRegister extends HTMLElement {
   }
 
   /**
-   * Update path for the external-user flow. The ATS B2B version endpoints
-   * are keyed by the work's numeric ATS id and scoped to the organization;
-   * the widget hits them directly with the partner-session JWT.
+   * Widget-with-ref path: the work is identified by its on-chain ATS id,
+   * picked from the user's listing. The server cross-checks
+   * `work.external_user_ref` against the JWT claim and rejects mismatches.
    */
   private async executeUpdateFlowByWorkId(formState: typeof this.state.formState): Promise<void> {
     const work = this.state.selectedWork;
@@ -1577,9 +1466,9 @@ export class AllfeatRegister extends HTMLElement {
       this.transitionToFailed('No work selected for update.', null, 'widget.no_work_selected');
       return;
     }
-    if (!this.externalUserId || !this.organizationId) {
+    if (!this.externalUserId) {
       this.transitionToFailed(
-        'Update is not configured: external-user-id and organization-id are required.',
+        'Update is not configured: external-user-id is required.',
         null,
         'widget.update_not_configured',
       );
@@ -1592,8 +1481,8 @@ export class AllfeatRegister extends HTMLElement {
     let jobId: string;
 
     if (file) {
-      const initResponse = await initUserWorkVersionUpload(
-        this.atsUrl, this.organizationId, this.token, this.siteKey, work.atsId,
+      const initResponse = await initWorkVersionUpload(
+        this.atsUrl, this.token, this.siteKey, work.atsId,
         { creators, filename: file.name, network },
       );
       jobId = initResponse.job_id;
@@ -1601,8 +1490,8 @@ export class AllfeatRegister extends HTMLElement {
       this.state.uploadUrl = initResponse.upload_url;
       await this.performUpload(initResponse.upload_url, file);
     } else {
-      const initResponse = await initUserWorkVersion(
-        this.atsUrl, this.organizationId, this.token, this.siteKey, work.atsId,
+      const initResponse = await initWorkVersion(
+        this.atsUrl, this.token, this.siteKey, work.atsId,
         { creators, network },
       );
       jobId = initResponse.job_id;
@@ -1612,13 +1501,13 @@ export class AllfeatRegister extends HTMLElement {
     this.state.screen = 'CONFIRMING';
     this.render();
 
-    await prepareUserWorkVersion(
-      this.atsUrl, this.organizationId, this.token, this.siteKey, work.atsId,
+    await prepareWorkVersion(
+      this.atsUrl, this.token, this.siteKey, work.atsId,
       { job_id: jobId },
     );
 
-    const confirmResponse = await confirmUserWorkVersion(
-      this.atsUrl, this.organizationId, this.token, this.siteKey, work.atsId,
+    const confirmResponse = await confirmWorkVersion(
+      this.atsUrl, this.token, this.siteKey, work.atsId,
       { job_id: jobId },
     );
 
@@ -1648,43 +1537,37 @@ export class AllfeatRegister extends HTMLElement {
   }
 
   /**
-   * Convert the wire-format `UserWork` to the camelCase `SelectedWork` used in state.
-   *
-   * The B2B listing embeds the version history but omits a couple of
-   * dashboard-style fields (`owner`, `has_files`). The widget derives
-   * `latestCommitment`, `updatedAt` and `assetFilename` from the inline
-   * versions (latest wins) and falls back sensibly for the rest — `hasFiles`
-   * defaults to `true` so the download buttons stay enabled (a missing file
-   * surfaces as a 404 on click).
+   * Convert the wire-format `WorkSummaryApi` row to the camelCase
+   * `SelectedWork` used in state. The unified listing returns only summary
+   * fields per work — the full version history and per-version creators
+   * are fetched on demand when the user drills into a work detail.
    */
-  private mapUserWork(api: UserWork): SelectedWork {
-    const versions = (api.versions ?? []).map(v => this.mapWorkVersion(v));
-    // Versions arrive oldest-first; the highest version carries the current state.
-    const latest = versions.reduce<WorkVersion | null>(
-      (acc, v) => (acc === null || v.version > acc.version ? v : acc),
-      null,
-    );
+  private mapWorkSummary(api: WorkSummaryApi): SelectedWork {
     return {
       id: api.id,
-      atsId: api.ats_id ?? -1,
-      owner: '',
+      atsId: api.ats_id,
+      owner: api.owner,
       latestVersion: api.latest_version,
-      latestCommitment: latest?.commitment ?? null,
-      createdAt: api.created_at,
-      updatedAt: latest?.registeredAt ?? api.created_at,
+      latestCommitment: api.latest_commitment ?? null,
+      createdAt: api.created_at ?? null,
+      updatedAt: api.latest_version_at ?? api.created_at ?? null,
       title: api.title ?? '',
-      assetFilename: latest?.assetFilename ?? null,
-      hasFiles: true,
-      versions,
+      assetFilename: api.asset_filename ?? null,
+      hasFiles: api.has_files,
+      versions: [],
     };
   }
 
-  /** Convert the wire-format `WorkVersionApi` to the camelCase `WorkVersion` used in state. */
+  /**
+   * Convert a wire-format `WorkVersionApi` row to the camelCase `WorkVersion`
+   * used in state. Per-version creators are not embedded in the response;
+   * they are lazy-loaded into `versionList.creatorsByVersion` on expand.
+   */
   private mapWorkVersion(api: WorkVersionApi): WorkVersion {
     return {
       version: api.version,
       commitment: api.commitment,
-      assetFilename: api.asset_filename ?? null,
+      assetFilename: null,
       registeredAt: api.registered_at ?? null,
       registeredAtBlock: api.registered_at_block ?? null,
       mediaHash: api.media_hash ?? null,
@@ -1693,7 +1576,7 @@ export class AllfeatRegister extends HTMLElement {
       txHash: api.tx_hash ?? null,
       feeCredits: api.fee_credits ?? null,
       storageFeeCredits: api.storage_fee_credits ?? null,
-      creators: (api.creators ?? []).map(c => this.mapWorkCreator(c)),
+      creators: [],
     };
   }
 
@@ -1749,13 +1632,15 @@ export class AllfeatRegister extends HTMLElement {
   // ============================================
 
   /**
-   * Fetch (or page through) the external user's works into `state.workList`.
+   * Fetch (or page through) the end-user's works into `state.workList`.
+   * The widget calls the unified `GET /v1/works?...` — the server applies
+   * the JWT's `external_user_ref` claim automatically.
    * @param opts.append - Append to the existing list instead of replacing (used by "Load more").
    * @param opts.quiet - Don't flash a loading spinner when we already have a list (used by search debounce).
    */
   private async loadUserWorks(opts: { append?: boolean; quiet?: boolean } = {}): Promise<void> {
     if (!this.externalUserId) return;
-    if (!this.atsUrl || !this.organizationId) return;
+    if (!this.atsUrl) return;
 
     const hasExistingWorks = this.state.workList.works.length > 0;
     if (!opts.quiet || !hasExistingWorks) {
@@ -1771,12 +1656,10 @@ export class AllfeatRegister extends HTMLElement {
 
     try {
       const search = this.state.workList.search.trim() || null;
-      const response = await listUserWorks(
+      const response = await listWorks(
         this.atsUrl,
-        this.organizationId,
         this.token,
         this.siteKey,
-        this.externalUserId,
         {
           network: this.network,
           first: 50,
@@ -1784,7 +1667,7 @@ export class AllfeatRegister extends HTMLElement {
           search,
         },
       );
-      const mapped = response.works.map(w => this.mapUserWork(w));
+      const mapped = response.works.map(w => this.mapWorkSummary(w));
       const merged = opts.append ? [...this.state.workList.works, ...mapped] : mapped;
       this.state.workList.works = this.sortByUpdatedAtDesc(merged);
       this.state.workList.endCursor = response.page_info.end_cursor;
@@ -1810,20 +1693,60 @@ export class AllfeatRegister extends HTMLElement {
   }
 
   /**
-   * Navigate from the DOWNLOADS list to the DOWNLOAD_DETAIL screen for a single
-   * work. The B2B listing already embeds the full version history, so the
-   * versions come straight from the cached `SelectedWork` — no extra fetch.
+   * Navigate from the DOWNLOADS list to the DOWNLOAD_DETAIL screen for a
+   * single work. The unified `/v1/works` listing only returns summary rows,
+   * so the version history is fetched on demand here (and cached for the
+   * lifetime of the screen — reopening the same work after a back-nav re-
+   * fetches, which is the safe default since on-chain state can advance).
    */
-  private openWorkDetail(workId: string): void {
+  private async openWorkDetail(workId: string): Promise<void> {
     const work = this.state.workList.works.find(w => w.id === workId) ?? null;
     this.state.versionList = createDefaultVersionListState();
     this.state.versionList.work = work;
-    if (work) {
-      this.state.versionList.versions = work.versions;
-      this.state.versionList.status = 'loaded';
-    }
+    this.state.versionList.status = 'loading';
     this.state.screen = 'DOWNLOAD_DETAIL';
     this.render();
+
+    if (!work || work.atsId < 0) {
+      this.state.versionList.status = 'loaded';
+      this.state.versionList.versions = work?.versions ?? [];
+      this.render();
+      return;
+    }
+
+    try {
+      const response = await getWorkVersions(
+        this.atsUrl, this.token, this.siteKey, work.atsId, this.network,
+      );
+      const versions = response.versions
+        .map(v => this.mapWorkVersion(v))
+        // The renderer expects newest-first.
+        .sort((a, b) => b.version - a.version);
+      // Patch the asset_filename of the latest version from the list row so
+      // the per-version download button can build the right S3 key. Older
+      // versions don't carry a filename in this endpoint — they fall back
+      // to the work-level latest filename on the server side anyway.
+      const latest = versions.find(v => v.version === work.latestVersion);
+      if (latest) latest.assetFilename = work.assetFilename;
+
+      this.state.versionList.versions = versions;
+      this.state.versionList.status = 'loaded';
+      this.render();
+    } catch (error) {
+      const e = error as WidgetError;
+      this.state.versionList.status = 'error';
+      this.state.versionList.error = e.kind === 'api'
+        ? getErrorMessage(e.error.code, e.error.details)
+        : 'Failed to load versions. Please try again.';
+      this.render();
+      if (e.kind === 'api') {
+        const code = e.error.code;
+        const authCodes = ['session.invalid_token', 'common.auth.missing_token', 'common.auth.expired', 'common.auth.invalid_token'];
+        if (authCodes.includes(code)) {
+          this.handleError(e, 'download_detail');
+        }
+      }
+    }
   }
 
   /** Navigate back to the DOWNLOADS list, preserving the cached list state. */
@@ -1835,14 +1758,14 @@ export class AllfeatRegister extends HTMLElement {
 
   private async handleDownloadVersionAsset(version: number): Promise<void> {
     const work = this.state.versionList.work;
-    if (!work || !this.externalUserId) return;
+    if (!work) return;
     if (this.state.versionList.downloading[version]) return;
     this.state.versionList.downloading = { ...this.state.versionList.downloading, [version]: 'asset' };
     this.render();
     dispatchDownloadStarted(this, { workId: work.id, kind: 'asset' });
     try {
-      const { url } = await downloadUserWorkVersionAsset(
-        this.atsUrl, this.organizationId, this.token, this.siteKey, this.externalUserId, work.id, version,
+      const { url } = await downloadVersionAudio(
+        this.atsUrl, this.token, this.siteKey, work.id, version,
       );
       openPresignedDownload(url);
       dispatchDownloadComplete(this, { workId: work.id, kind: 'asset' });
@@ -1871,23 +1794,30 @@ export class AllfeatRegister extends HTMLElement {
   }
 
   /**
-   * Resolve the latest version's creators for prefill. The B2B listing embeds
-   * creators inline per version, so they come straight off the already-loaded
-   * `SelectedWork.versions` — no extra request. Reuses the work-selector cache
-   * (populated by "Show creators") when present so prefill stays consistent.
+   * Resolve the latest version's creators for prefill via the unified
+   * `GET /v1/works/{ats_id}/creators` endpoint. Caches into the
+   * work-selector's per-work map so a later "Show creators" toggle is
+   * instant. Returns an empty list on fetch failure — prefill is best-
+   * effort, the creators step will simply start blank.
    */
-  private fetchWorkCreatorsForPrefill(work: SelectedWork): WorkCreator[] {
+  private async fetchWorkCreatorsForPrefill(work: SelectedWork): Promise<WorkCreator[]> {
     const cached = this.state.workList.creatorsByWork[work.id];
     if (cached && cached.status === 'loaded') return cached.creators;
+    if (work.atsId < 0) return [];
 
-    const latest = work.versions.find(v => v.version === work.latestVersion);
-    const creators = latest?.creators ?? [];
-    // Seed the cache so a later "Show creators" toggle is instant.
-    this.state.workList.creatorsByWork = {
-      ...this.state.workList.creatorsByWork,
-      [work.id]: { status: 'loaded', creators, error: null },
-    };
-    return creators;
+    try {
+      const response = await getWorkCreators(
+        this.atsUrl, this.token, this.siteKey, work.atsId, this.network,
+      );
+      const creators = response.creators.map(c => this.mapWorkCreator(c));
+      this.state.workList.creatorsByWork = {
+        ...this.state.workList.creatorsByWork,
+        [work.id]: { status: 'loaded', creators, error: null },
+      };
+      return creators;
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -1948,17 +1878,52 @@ export class AllfeatRegister extends HTMLElement {
     }
   }
 
-  /** Resolve the latest version's creators for a single work in the work-selector list. */
-  private loadWorkLatestCreators(workId: string): void {
+  /**
+   * Resolve the latest version's creators for a single work in the
+   * work-selector list. Lazy-fetched via `GET /v1/works/{ats_id}/creators`
+   * on first expand; result cached per work id so subsequent toggles are
+   * instant.
+   */
+  private async loadWorkLatestCreators(workId: string): Promise<void> {
     const work = this.state.workList.works.find(w => w.id === workId);
     if (!work) return;
 
-    const latest = work.versions.find(v => v.version === work.latestVersion);
     this.state.workList.creatorsByWork = {
       ...this.state.workList.creatorsByWork,
-      [workId]: { status: 'loaded', creators: latest?.creators ?? [], error: null },
+      [workId]: { status: 'loading', creators: [], error: null },
     };
     this.render();
+
+    if (work.atsId < 0) {
+      this.state.workList.creatorsByWork = {
+        ...this.state.workList.creatorsByWork,
+        [workId]: { status: 'loaded', creators: [], error: null },
+      };
+      this.render();
+      return;
+    }
+
+    try {
+      const response = await getWorkCreators(
+        this.atsUrl, this.token, this.siteKey, work.atsId, this.network,
+      );
+      const creators = response.creators.map(c => this.mapWorkCreator(c));
+      this.state.workList.creatorsByWork = {
+        ...this.state.workList.creatorsByWork,
+        [workId]: { status: 'loaded', creators, error: null },
+      };
+      this.render();
+    } catch (error) {
+      const e = error as WidgetError;
+      const message = e.kind === 'api'
+        ? getErrorMessage(e.error.code, e.error.details)
+        : 'Failed to load creators.';
+      this.state.workList.creatorsByWork = {
+        ...this.state.workList.creatorsByWork,
+        [workId]: { status: 'error', creators: [], error: message },
+      };
+      this.render();
+    }
   }
 
   /**
@@ -1978,29 +1943,63 @@ export class AllfeatRegister extends HTMLElement {
     }
   }
 
-  /** Resolve creators for a specific version of the currently-detailed work. */
-  private loadVersionCreators(version: number): void {
+  /**
+   * Resolve creators for a specific version of the currently-detailed work
+   * via `GET /v1/works/{ats_id}/versions/{v}/creators`. Cached per version
+   * number on the version-list state so subsequent toggles are instant.
+   */
+  private async loadVersionCreators(version: number): Promise<void> {
     const work = this.state.versionList.work;
     if (!work) return;
 
-    const match = work.versions.find(v => v.version === version);
     this.state.versionList.creatorsByVersion = {
       ...this.state.versionList.creatorsByVersion,
-      [version]: { status: 'loaded', creators: match?.creators ?? [], error: null },
+      [version]: { status: 'loading', creators: [], error: null },
     };
     this.render();
+
+    if (work.atsId < 0) {
+      this.state.versionList.creatorsByVersion = {
+        ...this.state.versionList.creatorsByVersion,
+        [version]: { status: 'loaded', creators: [], error: null },
+      };
+      this.render();
+      return;
+    }
+
+    try {
+      const response = await getVersionCreators(
+        this.atsUrl, this.token, this.siteKey, work.atsId, version, this.network,
+      );
+      const creators = response.creators.map(c => this.mapWorkCreator(c));
+      this.state.versionList.creatorsByVersion = {
+        ...this.state.versionList.creatorsByVersion,
+        [version]: { status: 'loaded', creators, error: null },
+      };
+      this.render();
+    } catch (error) {
+      const e = error as WidgetError;
+      const message = e.kind === 'api'
+        ? getErrorMessage(e.error.code, e.error.details)
+        : 'Failed to load creators.';
+      this.state.versionList.creatorsByVersion = {
+        ...this.state.versionList.creatorsByVersion,
+        [version]: { status: 'error', creators: [], error: message },
+      };
+      this.render();
+    }
   }
 
   private async handleDownloadVersionCert(version: number): Promise<void> {
     const work = this.state.versionList.work;
-    if (!work || !this.externalUserId) return;
+    if (!work) return;
     if (this.state.versionList.downloading[version]) return;
     this.state.versionList.downloading = { ...this.state.versionList.downloading, [version]: 'certificate' };
     this.render();
     dispatchDownloadStarted(this, { workId: work.id, kind: 'certificate' });
     try {
-      const { url } = await downloadUserWorkVersionCertificate(
-        this.atsUrl, this.organizationId, this.token, this.siteKey, this.externalUserId, work.id, version,
+      const { url } = await downloadVersionCertificate(
+        this.atsUrl, this.token, this.siteKey, work.id, version,
       );
       openPresignedDownload(url);
       dispatchDownloadComplete(this, { workId: work.id, kind: 'certificate' });
@@ -2206,16 +2205,9 @@ export class AllfeatRegister extends HTMLElement {
     if (!this.state.completionData || !this.state.workId) return;
 
     try {
-      // External-user flow: hit the B2B download route directly, authorized
-      // by the partner-session JWT on `token`. Session-token flow: direct
-      // ATS via the `/v1/works/{id}/download/certificate` route.
-      const { url } = this.hasExternalUser
-        ? await downloadUserWorkCertificate(
-            this.atsUrl, this.organizationId, this.token, this.siteKey, this.externalUserId!, this.state.workId,
-          )
-        : await downloadCertificate(
-            this.atsUrl, this.token, this.siteKey, this.state.workId,
-          );
+      const { url } = await downloadCertificate(
+        this.atsUrl, this.token, this.siteKey, this.state.workId,
+      );
       openPresignedDownload(url);
     } catch (error) {
       this.handleError(error as WidgetError, 'download');

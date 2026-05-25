@@ -14,11 +14,11 @@ export default defineEventHandler(async (event) => {
   const actionType = body?.action_type;
   const allowedNetwork = body?.allowed_network;
   const allowedAtsId = body?.allowed_ats_id;
-  // Optional partner-flow pin. When set, the organizations service issues
-  // a token with `action_type: "external_user"` semantics: it authorizes
-  // the org-scoped ATS routes (`/v1/organizations/{org}/...`) for the one
-  // user named here. The widget treats it as an opaque bearer like any
-  // other session token.
+  // Optional end-user pin. When set, the organizations service embeds it
+  // as an `external_user_ref` claim on the minted JWT. The ATS then scopes
+  // every `/v1/works/...` call from that token to the org's works tagged
+  // with this ref — no separate B2B route tree involved. The widget treats
+  // the token as an opaque bearer like any other session token.
   const externalUserRef = body?.external_user_ref;
 
   if (!organizationsUrl || !secretKey) {
@@ -59,13 +59,6 @@ export default defineEventHandler(async (event) => {
     // Echo the authorized network so the frontend can pass it to the widget.
     if (allowedNetwork) {
       merged.network = allowedNetwork;
-    }
-    // External-user flow: the demo pages need to set the widget's
-    // `organization-id` attribute alongside the token. Echoing the org id
-    // here (from server-side config) means the page never has to learn it
-    // out-of-band.
-    if (payload.external_user_ref && config.organizationId) {
-      merged.organization_id = config.organizationId;
     }
     return merged;
   } catch (err: any) {

@@ -3,19 +3,16 @@ import type {
   WidgetError,
   ConfirmWorkResponse,
   ConfirmVersionResponse,
-  ConfirmWorkVersionResponse,
   CreatorRequest,
-  DownloadAssetResponse,
-  DownloadCertificateResponse,
+  DownloadUrlResponse,
   InitWorkResponse,
   InitVersionUploadResponse,
   InitVersionResponse,
-  InitWorkVersionResponse,
-  InitWorkVersionUploadResponse,
-  ListUserWorksResponse,
+  ListVersionsResponse,
+  ListCreatorsResponse,
+  ListWorksResponse,
   PrepareWorkResponse,
   PrepareVersionResponse,
-  PrepareWorkVersionResponse,
   StatsResponse,
   TransactionStatusResponse,
   WsMessage,
@@ -158,14 +155,6 @@ export async function initWork(
     creators: CreatorRequest[];
     filename: string;
     network: string;
-    /**
-     * Optional partner-supplied end-user reference. When present it is
-     * persisted on the work, which is what makes the work discoverable later
-     * through the user-scoped listing (download mode) and the external-user
-     * update flow. Omitted from the request body when the host did not
-     * configure an `external-user-id`.
-     */
-    external_user_ref?: string;
   },
 ): Promise<InitWorkResponse> {
   const url = buildUrl(atsUrl, '/v1/works/init');
@@ -202,10 +191,10 @@ export async function confirmWork(
 }
 
 // ============================================
-// Update Mode — Version endpoints
+// Update Mode — Access-Code Path (refless widget session)
 // ============================================
 
-export async function initVersionUpload(
+export async function initVersionUploadByAccessCode(
   atsUrl: string,
   token: string,
   siteKey: string,
@@ -219,7 +208,7 @@ export async function initVersionUpload(
   });
 }
 
-export async function initVersion(
+export async function initVersionByAccessCode(
   atsUrl: string,
   token: string,
   siteKey: string,
@@ -233,7 +222,7 @@ export async function initVersion(
   });
 }
 
-export async function prepareVersion(
+export async function prepareVersionByAccessCode(
   atsUrl: string,
   token: string,
   siteKey: string,
@@ -247,7 +236,7 @@ export async function prepareVersion(
   });
 }
 
-export async function confirmVersion(
+export async function confirmVersionByAccessCode(
   atsUrl: string,
   token: string,
   siteKey: string,
@@ -255,6 +244,73 @@ export async function confirmVersion(
   data: { job_id: string },
 ): Promise<ConfirmVersionResponse> {
   const url = buildUrl(atsUrl, `/v1/access/${accessCode}/versions/confirm`);
+  return apiFetch<ConfirmVersionResponse>(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// ============================================
+// Update Mode — Work ID Path (widget session with external_user_ref)
+// ============================================
+//
+// The version-update endpoints under `/v1/works/{ats_id}/versions/...` are
+// reached when the caller already knows which work to mutate — that is the
+// case for widget sessions carrying an `external_user_ref` claim (the work
+// is picked from the user's listing) and for B2B API-key callers. The
+// server enforces that `work.external_user_ref` matches the caller's claim
+// before letting the write through.
+
+export async function initWorkVersionUpload(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  atsId: number,
+  data: { creators: CreatorRequest[]; filename: string; network: string },
+): Promise<InitVersionUploadResponse> {
+  const url = buildUrl(atsUrl, `/v1/works/${atsId}/versions/init-upload`);
+  return apiFetch<InitVersionUploadResponse>(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function initWorkVersion(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  atsId: number,
+  data: { creators: CreatorRequest[]; network: string },
+): Promise<InitVersionResponse> {
+  const url = buildUrl(atsUrl, `/v1/works/${atsId}/versions/init`);
+  return apiFetch<InitVersionResponse>(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function prepareWorkVersion(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  atsId: number,
+  data: { job_id: string },
+): Promise<PrepareVersionResponse> {
+  const url = buildUrl(atsUrl, `/v1/works/${atsId}/versions/prepare`);
+  return apiFetch<PrepareVersionResponse>(url, token, siteKey, {
+    method: 'POST',
+    body: JSON.stringify({ ...data, passphrase: null }),
+  });
+}
+
+export async function confirmWorkVersion(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  atsId: number,
+  data: { job_id: string },
+): Promise<ConfirmVersionResponse> {
+  const url = buildUrl(atsUrl, `/v1/works/${atsId}/versions/confirm`);
   return apiFetch<ConfirmVersionResponse>(url, token, siteKey, {
     method: 'POST',
     body: JSON.stringify(data),
@@ -273,6 +329,134 @@ export async function fetchAccessWork(
 ): Promise<AccessWorkResponse> {
   const url = buildUrl(atsUrl, `/v1/access/${encodeURIComponent(accessCode)}/work`);
   return apiFetch<AccessWorkResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+// ============================================
+// List & Detail — Unified `/v1/works/...` surface
+// ============================================
+//
+// Widget sessions carrying an `external_user_ref` claim hit the very same
+// endpoints as direct users and B2B keys. The server scopes the response
+// to the caller automatically: a widget+ref session sees only the works
+// tagged with its ref, B2B keys see every work of the org (optionally
+// narrowed with `?external_user_ref=`), direct users see their personal
+// works.
+
+export async function listWorks(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  opts: { network: string; first?: number; after?: string | null; search?: string | null },
+): Promise<ListWorksResponse> {
+  const params = new URLSearchParams();
+  params.set('network', opts.network);
+  if (opts.first != null) params.set('first', String(opts.first));
+  if (opts.after) params.set('after', opts.after);
+  if (opts.search) params.set('search', opts.search);
+  const url = buildUrl(atsUrl, `/v1/works?${params.toString()}`);
+  return apiFetch<ListWorksResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+/** Fetch the full version history for a work by its on-chain ATS id. */
+export async function getWorkVersions(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  atsId: number,
+  network: string,
+): Promise<ListVersionsResponse> {
+  const url = buildUrl(
+    atsUrl,
+    `/v1/works/${atsId}/versions?network=${encodeURIComponent(network)}`,
+  );
+  return apiFetch<ListVersionsResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+/** Fetch creators for the latest version of a work by its on-chain ATS id. */
+export async function getWorkCreators(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  atsId: number,
+  network: string,
+): Promise<ListCreatorsResponse> {
+  const url = buildUrl(
+    atsUrl,
+    `/v1/works/${atsId}/creators?network=${encodeURIComponent(network)}`,
+  );
+  return apiFetch<ListCreatorsResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+/** Fetch creators for a specific version of a work. */
+export async function getVersionCreators(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  atsId: number,
+  version: number,
+  network: string,
+): Promise<ListCreatorsResponse> {
+  const url = buildUrl(
+    atsUrl,
+    `/v1/works/${atsId}/versions/${version}/creators?network=${encodeURIComponent(network)}`,
+  );
+  return apiFetch<ListCreatorsResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+// ============================================
+// Downloads — Presigned S3 URLs (keyed by work UUID)
+// ============================================
+
+/** Presigned URL for the work's latest-version asset. */
+export async function downloadAsset(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  workUuid: string,
+): Promise<DownloadUrlResponse> {
+  const url = buildUrl(atsUrl, `/v1/works/${encodeURIComponent(workUuid)}/download/asset`);
+  return apiFetch<DownloadUrlResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+/** Presigned URL for the work's latest-version certificate PDF. */
+export async function downloadCertificate(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  workUuid: string,
+): Promise<DownloadUrlResponse> {
+  const url = buildUrl(atsUrl, `/v1/works/${encodeURIComponent(workUuid)}/download/certificate`);
+  return apiFetch<DownloadUrlResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+/** Presigned URL for a specific version's audio asset. */
+export async function downloadVersionAudio(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  workUuid: string,
+  version: number,
+): Promise<DownloadUrlResponse> {
+  const url = buildUrl(
+    atsUrl,
+    `/v1/works/${encodeURIComponent(workUuid)}/versions/${version}/download/audio`,
+  );
+  return apiFetch<DownloadUrlResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+/** Presigned URL for a specific version's certificate PDF. */
+export async function downloadVersionCertificate(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  workUuid: string,
+  version: number,
+): Promise<DownloadUrlResponse> {
+  const url = buildUrl(
+    atsUrl,
+    `/v1/works/${encodeURIComponent(workUuid)}/versions/${version}/download/certificate`,
+  );
+  return apiFetch<DownloadUrlResponse>(url, token, siteKey, { method: 'GET' });
 }
 
 // ============================================
@@ -341,236 +525,6 @@ export function uploadFileToS3WithProgress(
   };
 
   return attemptWithRetry();
-}
-
-// ============================================
-// Certificate Download
-// ============================================
-
-export async function downloadCertificate(
-  atsUrl: string,
-  token: string,
-  siteKey: string,
-  workId: string,
-): Promise<DownloadCertificateResponse> {
-  const url = buildUrl(atsUrl, `/v1/works/${workId}/download/certificate`);
-  return apiFetch<DownloadCertificateResponse>(url, token, siteKey, { method: 'GET' });
-}
-
-// ============================================
-// User-Scoped Works (external-user-id) — direct against ATS, partner-session JWT
-// ============================================
-//
-// When the host sets `external-user-id` on the widget, every call below
-// goes **directly** to the ATS B2B routes under
-// `/v1/organizations/{org}/external-users/{ref}/…` (reads) and
-// `/v1/organizations/{org}/works/…` (writes). The widget bears no
-// secret of its own: the `token` attribute carries a short-lived
-// partner-session JWT minted server-side by the host (against the
-// organizations service) and pinned to `(organization_id,
-// external_user_ref)` with `works:read` / `works:register` /
-// `works:update` scopes. The ATS verifies the JWT, hydrates the minting
-// key's org context, and runs the same handlers it would under a raw
-// API key — so the widget→BFF request-proxy hop the older versions used
-// is no longer needed. See `docs/api/user-scoped-works.md`.
-
-/** Path-segment-encode an external user reference for use in the ATS URL. */
-function euid(externalUserId: string): string {
-  return encodeURIComponent(externalUserId);
-}
-
-/** Compose the org-scoped ATS base for the external-user routes. */
-function orgBase(atsUrl: string, organizationId: string): string {
-  return `${atsUrl.replace(/\/+$/, '')}/v1/organizations/${encodeURIComponent(organizationId)}`;
-}
-
-/**
- * List the works registered for an external user. The ATS B2B listing
- * embeds each work's full version history inline (there is no separate
- * per-work versions endpoint).
- */
-export async function listUserWorks(
-  atsUrl: string,
-  organizationId: string,
-  token: string,
-  siteKey: string,
-  externalUserId: string,
-  opts: { network: string; first?: number; after?: string | null; search?: string | null },
-): Promise<ListUserWorksResponse> {
-  const params = new URLSearchParams();
-  params.set('network', opts.network);
-  if (opts.first != null) params.set('first', String(opts.first));
-  if (opts.after) params.set('after', opts.after);
-  if (opts.search) params.set('search', opts.search);
-  const url = `${orgBase(atsUrl, organizationId)}/external-users/${euid(externalUserId)}/works?${params.toString()}`;
-  return apiFetch<ListUserWorksResponse>(url, token, siteKey, { method: 'GET' });
-}
-
-/** Get a presigned URL to download a specific version's audio asset. */
-export async function downloadUserWorkVersionAsset(
-  atsUrl: string,
-  organizationId: string,
-  token: string,
-  siteKey: string,
-  externalUserId: string,
-  workId: string,
-  version: number,
-): Promise<DownloadAssetResponse> {
-  const url = `${orgBase(atsUrl, organizationId)}/external-users/${euid(externalUserId)}/works/${encodeURIComponent(workId)}/versions/${version}/download/audio`;
-  return apiFetch<DownloadAssetResponse>(url, token, siteKey, { method: 'GET' });
-}
-
-/**
- * Get a presigned URL to download a work's latest-version certificate PDF.
- * Work-level counterpart of `downloadCertificate` for the external-user flow —
- * used by the post-registration success screen, which has no session token.
- */
-export async function downloadUserWorkCertificate(
-  atsUrl: string,
-  organizationId: string,
-  token: string,
-  siteKey: string,
-  externalUserId: string,
-  workId: string,
-): Promise<DownloadCertificateResponse> {
-  const url = `${orgBase(atsUrl, organizationId)}/external-users/${euid(externalUserId)}/works/${encodeURIComponent(workId)}/download/certificate`;
-  return apiFetch<DownloadCertificateResponse>(url, token, siteKey, { method: 'GET' });
-}
-
-/** Get a presigned URL to download a specific version's certificate PDF. */
-export async function downloadUserWorkVersionCertificate(
-  atsUrl: string,
-  organizationId: string,
-  token: string,
-  siteKey: string,
-  externalUserId: string,
-  workId: string,
-  version: number,
-): Promise<DownloadCertificateResponse> {
-  const url = `${orgBase(atsUrl, organizationId)}/external-users/${euid(externalUserId)}/works/${encodeURIComponent(workId)}/versions/${version}/download/certificate`;
-  return apiFetch<DownloadCertificateResponse>(url, token, siteKey, { method: 'GET' });
-}
-
-// Registration endpoints. The ATS B2B register routes
-// (`/v1/organizations/{org}/works/init|prepare|confirm`) are thin wrappers over
-// the same handlers as the direct register flow, so they share the response
-// shapes. The crucial difference from the direct `/v1/works/*` path: the B2B
-// `init` honours `external_user_ref`, tagging the work to the end user so it
-// surfaces later in their download / update lists (the direct route ignores it).
-// The ATS overrides `external_user_ref` with the value pinned in the JWT, so
-// the field is required in the body for backwards-compat but the server is
-// authoritative.
-
-export async function initUserWork(
-  atsUrl: string,
-  organizationId: string,
-  token: string,
-  siteKey: string,
-  data: {
-    title: string;
-    creators: CreatorRequest[];
-    filename: string;
-    network: string;
-    external_user_ref: string;
-  },
-): Promise<InitWorkResponse> {
-  const url = `${orgBase(atsUrl, organizationId)}/works/init`;
-  return apiFetch<InitWorkResponse>(url, token, siteKey, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
-
-export async function prepareUserWork(
-  atsUrl: string,
-  organizationId: string,
-  token: string,
-  siteKey: string,
-  data: { job_id: string },
-): Promise<PrepareWorkResponse> {
-  const url = `${orgBase(atsUrl, organizationId)}/works/prepare`;
-  return apiFetch<PrepareWorkResponse>(url, token, siteKey, {
-    method: 'POST',
-    body: JSON.stringify({ ...data, passphrase: null }),
-  });
-}
-
-export async function confirmUserWork(
-  atsUrl: string,
-  organizationId: string,
-  token: string,
-  siteKey: string,
-  data: { job_id: string },
-): Promise<ConfirmWorkResponse> {
-  const url = `${orgBase(atsUrl, organizationId)}/works/confirm`;
-  return apiFetch<ConfirmWorkResponse>(url, token, siteKey, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
-
-// Version-update endpoints. The ATS B2B version routes are keyed by the work's
-// numeric ATS id (not its UUID) and scoped to the organization, so these take
-// `atsId`. `network` travels in the init bodies, matching the B2B contract.
-
-export async function initUserWorkVersionUpload(
-  atsUrl: string,
-  organizationId: string,
-  token: string,
-  siteKey: string,
-  atsId: number,
-  data: { creators: CreatorRequest[]; filename: string; network: string },
-): Promise<InitWorkVersionUploadResponse> {
-  const url = `${orgBase(atsUrl, organizationId)}/works/${atsId}/versions/init-upload`;
-  return apiFetch<InitWorkVersionUploadResponse>(url, token, siteKey, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
-
-export async function initUserWorkVersion(
-  atsUrl: string,
-  organizationId: string,
-  token: string,
-  siteKey: string,
-  atsId: number,
-  data: { creators: CreatorRequest[]; network: string },
-): Promise<InitWorkVersionResponse> {
-  const url = `${orgBase(atsUrl, organizationId)}/works/${atsId}/versions/init`;
-  return apiFetch<InitWorkVersionResponse>(url, token, siteKey, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
-
-export async function prepareUserWorkVersion(
-  atsUrl: string,
-  organizationId: string,
-  token: string,
-  siteKey: string,
-  atsId: number,
-  data: { job_id: string },
-): Promise<PrepareWorkVersionResponse> {
-  const url = `${orgBase(atsUrl, organizationId)}/works/${atsId}/versions/prepare`;
-  return apiFetch<PrepareWorkVersionResponse>(url, token, siteKey, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
-
-export async function confirmUserWorkVersion(
-  atsUrl: string,
-  organizationId: string,
-  token: string,
-  siteKey: string,
-  atsId: number,
-  data: { job_id: string },
-): Promise<ConfirmWorkVersionResponse> {
-  const url = `${orgBase(atsUrl, organizationId)}/works/${atsId}/versions/confirm`;
-  return apiFetch<ConfirmWorkVersionResponse>(url, token, siteKey, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
 }
 
 // ============================================

@@ -12,7 +12,6 @@ interface SessionToken {
   token: string;
   expires_in?: number;
   network?: string;
-  organization_id?: string;
 }
 
 const activeMode = ref<WidgetMode>("register");
@@ -21,21 +20,31 @@ const widgetRef = ref<HTMLElement | null>(null);
 const mobileNavOpen = ref(false);
 
 /**
- * Ask the server-side BFF to mint a widget session token pinned to the
- * demo user. The BFF holds the widget `secret_key` + organization id in
- * `runtimeConfig`; the page supplies only the per-call flow info and gets
- * back a short-lived JWT. The token carries `action_type: "external_user"`
- * and an `external_user_ref` claim, which together authorize the ATS
- * org-scoped routes — no per-request server-side proxy needed.
+ * Map the widget mode to the JWT `action_type` claim the organizations
+ * service mints. The widget surface (`/v1/works/...`) is identical across
+ * all three; the claim only narrows what the token may do within that
+ * surface — register, version-update, or read-only access.
  */
-async function mintExternalUserSession(): Promise<SessionToken> {
+function actionTypeForMode(mode: WidgetMode): "register" | "update_version" | "access" {
+  if (mode === "register") return "register";
+  if (mode === "update") return "update_version";
+  return "access";
+}
+
+/**
+ * Ask the server-side BFF to mint a widget session token for the current
+ * mode, pinned to the demo end-user. The BFF holds the widget `secret_key`
+ * + organization id in `runtimeConfig`; the page supplies only the per-call
+ * flow info and gets back a short-lived JWT. The token carries
+ * `action_type` (narrowing the action) and `external_user_ref` (scoping
+ * every `/v1/works/...` call to this user's works). No B2B route tree is
+ * involved — the widget always hits the same unified routes.
+ */
+async function mintExternalUserSession(mode: WidgetMode): Promise<SessionToken> {
   return await $fetch<SessionToken>("/api/token", {
     method: "POST",
     body: {
-      action_type: "external_user",
-      // Match the network the widget operates on. The ATS no longer
-      // enforces network for external-user tokens (it's an org-scoped B2B
-      // caller), but keeping these aligned avoids confusion.
+      action_type: actionTypeForMode(mode),
       allowed_network: network,
       external_user_ref: DEMO_EXTERNAL_USER_ID,
     },
@@ -49,16 +58,12 @@ async function configureWidget(mode: WidgetMode) {
   loading.value = true;
 
   try {
-    const session = await mintExternalUserSession();
+    const session = await mintExternalUserSession(mode);
 
     widget.setAttribute("ats-url", atsUrl);
     widget.setAttribute("site-key", siteKey);
     widget.setAttribute("network", network);
     widget.setAttribute("external-user-id", DEMO_EXTERNAL_USER_ID);
-    // The organization id is required so the widget can compose org-scoped
-    // ATS URLs directly. The mint BFF echoes it back so the page doesn't
-    // need a public copy of it.
-    widget.setAttribute("organization-id", session.organization_id ?? "");
     widget.setAttribute("token", session.token);
     widget.removeAttribute("max-file-size");
 
@@ -101,12 +106,12 @@ onMounted(() => {
     console.error("[Abbey Road] Failed:", (e as CustomEvent).detail);
   });
 
-  // When the widget's current JWT expires, mint a fresh one and put it
-  // back on the `token` attribute. The widget will resume whichever step
-  // it paused on.
+  // When the widget's current JWT expires, mint a fresh one for the
+  // currently active mode and put it back on the `token` attribute. The
+  // widget will resume whichever step it paused on.
   widget.addEventListener("allfeat:token-expired", async () => {
     try {
-      const session = await mintExternalUserSession();
+      const session = await mintExternalUserSession(activeMode.value);
       widget.setAttribute("token", session.token);
     } catch (err) {
       console.error("[Abbey Road] Failed to re-mint session:", err);

@@ -54,7 +54,7 @@ Custom Rollup CSS plugin inlines `.css` files as JS string exports.
 
 ### API Integration Pattern
 
-The component talks to the ATS API backend directly (`ats-url` attribute) on every call. Demo apps use a single Nuxt 3 mint-only BFF route, `/api/token`, which exchanges the host's widget `secret_key` for a session JWT. The `action_type` field on the mint request selects the surface: `register` / `update_version` / `access` produce a narrow token for the user-scoped routes; `external_user` (with an `external_user_ref`) produces a token that authorizes the org-scoped B2B routes (`/v1/organizations/{org}/...`) for that one end-user. Either kind of token goes on the widget's `token` attribute — the widget treats them identically and never sees the host's long-lived secrets. Transaction tracking uses WebSocket with HTTP polling fallback. File upload uses pre-signed S3 PUT URLs via `XMLHttpRequest` for progress.
+The component talks to the ATS API backend directly (`ats-url` attribute) on every call. Demo apps use a single Nuxt 3 mint-only BFF route, `/api/token`, which exchanges the host's widget `secret_key` for a session JWT. The `action_type` field on the mint request narrows what the token may do: `register`, `update_version`, or `access`. An optional `external_user_ref` claim on the same token scopes every `/v1/works/...` call to that end-user's portfolio server-side — no separate route tree is involved. Either kind of token (with or without the ref) goes on the widget's `token` attribute; the widget treats them identically and never sees the host's long-lived secrets. Transaction tracking uses WebSocket with HTTP polling fallback. File upload uses pre-signed S3 PUT URLs via `XMLHttpRequest` for progress.
 
 ### Token Refresh Flow
 
@@ -64,7 +64,7 @@ The component talks to the ATS API backend directly (`ats-url` attribute) on eve
 
 Single Nuxt 3 app in `demo/` (port 3000) with two pages:
 - `/` — Dev console with config UI, event log, and code examples
-- `/abbey-road` — Production-pattern integration cloning the Abbey Road Studios site, with the external-user mint flow (`action_type: "external_user"`)
+- `/abbey-road` — Production-pattern integration cloning the Abbey Road Studios site. Mints a fresh session per widget mode (`action_type` ∈ `register | update_version | access`) with an `external_user_ref` claim pinning every call to one demo end-user.
 
 Docker support (`demo/Dockerfile`, `demo/docker-compose.dev.yml`) for containerized deployment.
 
