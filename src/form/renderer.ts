@@ -60,7 +60,17 @@ const UPDATE_FORM_STEPS_USER_SCOPED: StepDef[] = [
   { id: 'review', label: 'Summary' },
 ];
 
+/**
+ * Download mode without `external-user-id` is a single-step "wizard":
+ * the user types an access code, the widget fetches the work, and the
+ * detail screen takes over. There is no review/submit.
+ */
+const DOWNLOAD_FORM_STEPS_ACCESS_CODE: StepDef[] = [ACCESS_CODE_STEP];
+
 export function getFormSteps(mode: Mode, externalUserMode = false): StepDef[] {
+  if (mode === 'download') {
+    return externalUserMode ? [] : DOWNLOAD_FORM_STEPS_ACCESS_CODE;
+  }
   if (mode === 'update') {
     return externalUserMode ? UPDATE_FORM_STEPS_USER_SCOPED : UPDATE_FORM_STEPS;
   }
@@ -95,6 +105,9 @@ function getStepIcon(stepId: string): string {
 
 export function renderStepIndicator(currentSubStep: FormSubStep, mode: Mode, externalUserMode = false): string {
   const steps = getFormSteps(mode, externalUserMode);
+  // A single-step "wizard" (e.g. download mode's access-code prompt) has
+  // nothing to indicate progress between, so skip the indicator entirely.
+  if (steps.length <= 1) return '';
   const currentIndex = getStepIndex(currentSubStep, mode, externalUserMode);
 
   return `
@@ -564,10 +577,21 @@ export function renderAccessCodeStep(
   accessCode: string,
   errors: { accessCode?: string } = {},
   loading = false,
+  mode: Mode = 'update',
 ): string {
+  const isDownload = mode === 'download';
+  const subtitle = isDownload
+    ? 'Enter your access code to view and download your work'
+    : 'Enter your access code to update the work';
+  let nextLabel: string;
+  if (loading) {
+    nextLabel = isDownload ? 'Loading...' : 'Verifying...';
+  } else {
+    nextLabel = isDownload ? 'View work' : 'Next';
+  }
   return `
     <div class="ats-section-title ats-section-title-centered">Enter Access Code</div>
-    <div class="ats-section-title">Enter your access code to update the work</div>
+    <div class="ats-section-title">${subtitle}</div>
     <div class="ats-form-group">
       <label class="ats-label ats-label-required" for="access-code">Access Code</label>
       <input
@@ -585,7 +609,7 @@ export function renderAccessCodeStep(
     </div>
     <div class="ats-btn-group ats-btn-group-right">
       <button type="button" class="ats-btn ats-btn-primary" id="next-btn" data-action="next" ${loading ? 'disabled' : ''}>
-        ${loading ? 'Verifying...' : 'Next'}
+        ${nextLabel}
       </button>
     </div>
   `;
@@ -915,6 +939,7 @@ function renderWorkVersionCard(
   downloading: 'asset' | 'certificate' | null | undefined,
   creatorsExpanded: boolean,
   creatorsEntry: VersionCreatorsEntry | undefined,
+  hideCreatorsToggle = false,
 ): string {
   const inFlightAsset = downloading === 'asset';
   const inFlightCert = downloading === 'certificate';
@@ -965,6 +990,7 @@ function renderWorkVersionCard(
           <div class="ats-summary-value">${escapeHtml(block)}</div>
         </div>
       </div>
+      ${hideCreatorsToggle ? '' : `
       <button type="button"
               class="ats-btn ats-btn-sm ats-btn-outline ats-w-full ats-version-creators-toggle"
               data-action="toggle-version-creators"
@@ -974,16 +1000,21 @@ function renderWorkVersionCard(
         <span>${creatorsExpanded ? 'Hide creators' : 'Show creators'}</span>
       </button>
       ${creatorsExpanded ? renderVersionCreatorsPanel(creatorsEntry) : ''}
+      `}
     </div>
   `;
 }
 
 export function renderDownloadDetailScreen(state: VersionListState): string {
   const work = state.work;
+  const isAccessCode = !!state.accessCode;
+  // The access-code surface has no list to return to — every lookup is for
+  // exactly one work — so the back action returns to the access-code prompt.
+  const backLabel = isAccessCode ? 'Look up another code' : 'Back to works';
   const backBtn = `
     <button type="button" class="ats-btn ats-btn-link ats-back-link" data-action="back-to-list">
       ${ICONS.arrowLeft}
-      <span>Back to works</span>
+      <span>${backLabel}</span>
     </button>
   `;
 
@@ -1025,6 +1056,11 @@ export function renderDownloadDetailScreen(state: VersionListState): string {
           state.downloading[v.version],
           state.creatorsExpanded[v.version] === true,
           state.creatorsByVersion[v.version],
+          // The access-code surface can only resolve creators for the
+          // latest version (pre-populated from the work response). Older
+          // versions have no available creators endpoint, so hide the
+          // toggle rather than dangle a control that can't load anything.
+          isAccessCode && v.version !== work.latestVersion,
         )).join('')}
       </div>
     `;

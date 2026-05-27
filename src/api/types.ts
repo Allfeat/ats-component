@@ -289,6 +289,12 @@ export interface AccessWorkResponse {
   /** Original filename of the uploaded asset. */
   asset_filename: string | null;
   creators?: AccessWorkCreator[];
+  /**
+   * On-chain version history when the backend embeds it. Refless widget
+   * sessions can't reach `/v1/works/{id}/versions`, so this is the only
+   * way to enumerate older versions for the access-code download flow.
+   */
+  versions?: WorkVersionApi[];
 }
 
 // ============================================

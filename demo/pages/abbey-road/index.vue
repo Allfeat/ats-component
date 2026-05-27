@@ -15,6 +15,13 @@ interface SessionToken {
 }
 
 const activeMode = ref<WidgetMode>("register");
+// Toggles between the two end-user surfaces:
+//   true  → mint a session with `external_user_ref` so the widget calls
+//           the user-scoped `/v1/works/...` listing. Update/download show
+//           the work selector and list, respectively.
+//   false → mint a refless session. Update/download fall back to the
+//           access-code prompt (the widget asks the user for `atc_...`).
+const useExternalUserId = ref(true);
 const loading = ref(true);
 const widgetRef = ref<HTMLElement | null>(null);
 const mobileNavOpen = ref(false);
@@ -33,22 +40,20 @@ function actionTypeForMode(mode: WidgetMode): "register" | "update_version" | "a
 
 /**
  * Ask the server-side BFF to mint a widget session token for the current
- * mode, pinned to the demo end-user. The BFF holds the widget `secret_key`
- * + organization id in `runtimeConfig`; the page supplies only the per-call
- * flow info and gets back a short-lived JWT. The token carries
- * `action_type` (narrowing the action) and `external_user_ref` (scoping
- * every `/v1/works/...` call to this user's works). No B2B route tree is
- * involved — the widget always hits the same unified routes.
+ * mode. With `withRef`, the BFF adds the demo end-user as an
+ * `external_user_ref` claim so every `/v1/works/...` call is scoped to
+ * that user's works. Without it, the JWT is refless and update/download
+ * have to fall through to the access-code surface.
  */
-async function mintExternalUserSession(mode: WidgetMode): Promise<SessionToken> {
-  return await $fetch<SessionToken>("/api/token", {
-    method: "POST",
-    body: {
-      action_type: actionTypeForMode(mode),
-      allowed_network: network,
-      external_user_ref: DEMO_EXTERNAL_USER_ID,
-    },
-  });
+async function mintSession(mode: WidgetMode, withRef: boolean): Promise<SessionToken> {
+  const body: Record<string, unknown> = {
+    action_type: actionTypeForMode(mode),
+    allowed_network: network,
+  };
+  if (withRef) {
+    body.external_user_ref = DEMO_EXTERNAL_USER_ID;
+  }
+  return await $fetch<SessionToken>("/api/token", { method: "POST", body });
 }
 
 async function configureWidget(mode: WidgetMode) {
@@ -58,17 +63,24 @@ async function configureWidget(mode: WidgetMode) {
   loading.value = true;
 
   try {
-    const session = await mintExternalUserSession(mode);
+    const withRef = useExternalUserId.value;
+    const session = await mintSession(mode, withRef);
 
     widget.setAttribute("ats-url", atsUrl);
     widget.setAttribute("site-key", siteKey);
     widget.setAttribute("network", network);
-    widget.setAttribute("external-user-id", DEMO_EXTERNAL_USER_ID);
+    if (withRef) {
+      widget.setAttribute("external-user-id", DEMO_EXTERNAL_USER_ID);
+    } else {
+      widget.removeAttribute("external-user-id");
+    }
     widget.setAttribute("token", session.token);
     widget.removeAttribute("max-file-size");
 
     widget.setAttribute("mode", mode);
-    console.log(`[Abbey Road] Widget initialized in ${mode} mode`);
+    console.log(
+      `[Abbey Road] Widget initialized in ${mode} mode (${withRef ? "user-scoped" : "access-code"})`,
+    );
   } catch (err: any) {
     const msg =
       err?.data?.message ||
@@ -85,6 +97,16 @@ function switchMode(mode: WidgetMode) {
   if (mode === activeMode.value && !loading.value) return;
   activeMode.value = mode;
   configureWidget(mode);
+}
+
+function toggleUserScope(next: boolean) {
+  if (next === useExternalUserId.value && !loading.value) return;
+  useExternalUserId.value = next;
+  // Re-mint a session of the matching kind and re-wire the widget. Switching
+  // scope mid-flow drops any in-progress state in the widget — expected,
+  // because the two surfaces address works differently (user-scoped UUID vs
+  // access code) and a half-completed flow on one wouldn't carry across.
+  configureWidget(activeMode.value);
 }
 
 onMounted(() => {
@@ -106,12 +128,12 @@ onMounted(() => {
     console.error("[Abbey Road] Failed:", (e as CustomEvent).detail);
   });
 
-  // When the widget's current JWT expires, mint a fresh one for the
-  // currently active mode and put it back on the `token` attribute. The
+  // When the widget's current JWT expires, mint a fresh one of the same
+  // kind (refful/refless) and put it back on the `token` attribute. The
   // widget will resume whichever step it paused on.
   widget.addEventListener("allfeat:token-expired", async () => {
     try {
-      const session = await mintExternalUserSession(activeMode.value);
+      const session = await mintSession(activeMode.value, useExternalUserId.value);
       widget.setAttribute("token", session.token);
     } catch (err) {
       console.error("[Abbey Road] Failed to re-mint session:", err);
@@ -303,6 +325,37 @@ useHead({
               My Works
             </button>
           </div>
+
+          <!-- Demo-only: pick which end-user surface the session targets.
+               In production the host picks one and sticks with it. -->
+          <div class="scope-switcher" role="group" aria-label="Session scope">
+            <button
+              type="button"
+              :class="['scope-btn', { active: useExternalUserId }]"
+              :disabled="loading"
+              @click="toggleUserScope(true)"
+            >
+              With user_id
+            </button>
+            <button
+              type="button"
+              :class="['scope-btn', { active: !useExternalUserId }]"
+              :disabled="loading"
+              @click="toggleUserScope(false)"
+            >
+              Access code
+            </button>
+          </div>
+          <p class="scope-hint">
+            <template v-if="useExternalUserId">
+              Session is pinned to a demo end-user — update/My Works show the
+              user's works directly.
+            </template>
+            <template v-else>
+              Refless session — update/My Works prompt for an access code
+              <code>atc_…</code> to look up a single work.
+            </template>
+          </p>
         </div>
 
         <div class="component-card">
@@ -731,6 +784,66 @@ body {
 .mode-btn.active:hover {
   background: var(--ar-ink);
   color: #fff;
+}
+
+/* ========== Scope Switcher (demo-only) ========== */
+.scope-switcher {
+  display: inline-flex;
+  gap: 4px;
+  background: var(--ar-surface);
+  border: 1px solid var(--ar-line);
+  border-radius: 24px;
+  padding: 4px;
+  margin-top: 14px;
+}
+
+.scope-btn {
+  font-family: "Maison Neue Mono", Heebo, sans-serif;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 24px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--ar-ink-soft);
+  background: transparent;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.scope-btn:hover:not(:disabled) {
+  color: var(--ar-teal-deep);
+}
+
+.scope-btn.active,
+.scope-btn.active:hover {
+  background: var(--ar-teal-deep);
+  color: #fff;
+}
+
+.scope-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.scope-hint {
+  font-family: "Maison Neue Mono", Heebo, sans-serif;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ar-ink-soft);
+  max-width: 420px;
+  margin: 8px auto 0;
+}
+
+.scope-hint code {
+  font-family: inherit;
+  background: var(--ar-surface);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--ar-line);
 }
 
 /* ========== Widget Card ========== */

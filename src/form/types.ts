@@ -194,6 +194,13 @@ export interface VersionListState {
   creatorsExpanded: Record<number, boolean>;
   /** Per-version creators cache (lazy-loaded). Keyed by version number. */
   creatorsByVersion: Record<number, VersionCreatorsEntry>;
+  /**
+   * When set, the detail screen was loaded via `GET /v1/access/{code}/work`
+   * (refless widget session). Download buttons must route through the
+   * `/v1/access/{code}/...` surface instead of `/v1/works/{uuid}/...`, and
+   * the back button returns to the access-code prompt rather than a list.
+   */
+  accessCode: string | null;
 }
 
 /** Creates a fresh, empty VersionListState. */
@@ -206,6 +213,7 @@ export function createDefaultVersionListState(): VersionListState {
     downloading: {},
     creatorsExpanded: {},
     creatorsByVersion: {},
+    accessCode: null,
   };
 }
 

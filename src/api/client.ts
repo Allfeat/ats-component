@@ -460,6 +460,66 @@ export async function downloadVersionCertificate(
 }
 
 // ============================================
+// Downloads — Access-Code Path (refless widget session)
+// ============================================
+//
+// Refless widget sessions (no `external_user_ref` claim) cannot hit the
+// `/v1/works/{uuid}/...` surface; they must address downloads via the
+// access code. Same response shape, different scoping.
+
+/** Presigned URL for the latest-version audio asset, addressed by access code. */
+export async function downloadAccessAsset(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  accessCode: string,
+): Promise<DownloadUrlResponse> {
+  const url = buildUrl(atsUrl, `/v1/access/${encodeURIComponent(accessCode)}/download/asset`);
+  return apiFetch<DownloadUrlResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+/** Presigned URL for the latest-version certificate PDF, addressed by access code. */
+export async function downloadAccessCertificate(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  accessCode: string,
+): Promise<DownloadUrlResponse> {
+  const url = buildUrl(atsUrl, `/v1/access/${encodeURIComponent(accessCode)}/download/certificate`);
+  return apiFetch<DownloadUrlResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+/** Presigned URL for a specific version's audio asset, addressed by access code. */
+export async function downloadAccessVersionAudio(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  accessCode: string,
+  version: number,
+): Promise<DownloadUrlResponse> {
+  const url = buildUrl(
+    atsUrl,
+    `/v1/access/${encodeURIComponent(accessCode)}/versions/${version}/download/audio`,
+  );
+  return apiFetch<DownloadUrlResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+/** Presigned URL for a specific version's certificate PDF, addressed by access code. */
+export async function downloadAccessVersionCertificate(
+  atsUrl: string,
+  token: string,
+  siteKey: string,
+  accessCode: string,
+  version: number,
+): Promise<DownloadUrlResponse> {
+  const url = buildUrl(
+    atsUrl,
+    `/v1/access/${encodeURIComponent(accessCode)}/versions/${version}/download/certificate`,
+  );
+  return apiFetch<DownloadUrlResponse>(url, token, siteKey, { method: 'GET' });
+}
+
+// ============================================
 // S3 Upload with Progress
 // ============================================
 

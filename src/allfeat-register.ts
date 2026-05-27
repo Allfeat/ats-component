@@ -16,6 +16,8 @@ import {
   downloadCertificate,
   downloadVersionAudio,
   downloadVersionCertificate,
+  downloadAccessVersionAudio,
+  downloadAccessVersionCertificate,
   subscribeToTransaction,
   pollTransactionStatus,
   listWorks,
@@ -27,6 +29,7 @@ import type {
   WidgetError,
   CreatorRequest,
   AccessWorkResponse,
+  AccessWorkCreator,
   WorkSummaryApi,
   WorkCreatorResponse,
   WorkVersionApi,
@@ -240,6 +243,15 @@ export class AllfeatRegister extends HTMLElement {
             this.handleNext();
           } else if (stage === 'work_select' || stage === 'download_list') {
             this.loadUserWorks();
+          } else if (
+            stage === 'download_version_asset'
+            || stage === 'download_version_certificate'
+            || stage === 'download_detail'
+          ) {
+            // No automatic retry — the detail view stays intact, so the user
+            // can simply re-click the download button now that we have a
+            // fresh token. Retrying automatically would risk firing requests
+            // the user has moved on from.
           } else {
             this.handleSubmit();
           }
@@ -270,20 +282,21 @@ export class AllfeatRegister extends HTMLElement {
         this.state.workList = createDefaultWorkListState();
         this.state.versionList = createDefaultVersionListState();
         this.state.selectedWork = null;
-        // If we were drilled into a work-detail, drop back to the list — the previous
-        // detail belonged to a different user.
-        if (this.state.screen === 'DOWNLOAD_DETAIL') {
-          this.state.screen = 'DOWNLOADS';
-        }
-        if (this.mode === 'update' && this.state.screen === 'FORM') {
+        // Re-route inside the update/download flows. The previous screen state
+        // belonged to a different scope (ref-scoped vs refless), so drop back
+        // to the entry point of the now-applicable flow.
+        if (this.mode === 'update') {
+          this.state.screen = 'FORM';
           this.state.formSubStep = this.hasExternalUser ? 'work_select' : 'access_code';
           if (this.hasExternalUser) this.loadUserWorks();
         } else if (this.mode === 'download') {
           if (this.hasExternalUser) {
+            this.state.screen = 'DOWNLOADS';
             this.loadUserWorks();
           } else {
-            this.state.workList.status = 'error';
-            this.state.workList.error = 'Download mode requires an external-user-id attribute.';
+            this.state.screen = 'FORM';
+            this.state.formSubStep = 'access_code';
+            this.state.formState.accessCode = '';
           }
         }
         this.render();
@@ -312,12 +325,13 @@ export class AllfeatRegister extends HTMLElement {
   private applyModeRouting(): void {
     const mode = this.mode;
     if (mode === 'download') {
-      this.state.screen = 'DOWNLOADS';
       if (this.hasExternalUser) {
+        this.state.screen = 'DOWNLOADS';
         this.loadUserWorks();
       } else {
-        this.state.workList.status = 'error';
-        this.state.workList.error = 'Download mode requires an external-user-id attribute.';
+        // Refless session: prompt for an access code that pins the detail screen to one work.
+        this.state.screen = 'FORM';
+        this.state.formSubStep = 'access_code';
       }
       return;
     }
@@ -726,7 +740,7 @@ export class AllfeatRegister extends HTMLElement {
 
     switch (formSubStep) {
       case 'access_code':
-        content += renderAccessCodeStep(formState.accessCode, { accessCode: formErrors.accessCode }, this.state.submitting);
+        content += renderAccessCodeStep(formState.accessCode, { accessCode: formErrors.accessCode }, this.state.submitting, this.mode);
         break;
       case 'work_select':
         content += renderWorkSelectorStep(this.state.workList, {
@@ -1067,7 +1081,7 @@ export class AllfeatRegister extends HTMLElement {
       return;
     }
 
-    if (this.state.formSubStep === 'access_code' && this.mode === 'update') {
+    if (this.state.formSubStep === 'access_code' && (this.mode === 'update' || this.mode === 'download')) {
       const accessCode = this.state.formState.accessCode.trim();
 
       this.state.submitting = true;
@@ -1075,6 +1089,12 @@ export class AllfeatRegister extends HTMLElement {
 
       try {
         const result = await fetchAccessWork(this.atsUrl, this.token, this.siteKey, accessCode);
+
+        if (this.mode === 'download') {
+          this.openAccessCodeDetail(accessCode, result);
+          this.state.submitting = false;
+          return;
+        }
 
         this.state.accessData = this.mapAccessWorkResponse(result);
 
@@ -1234,7 +1254,6 @@ export class AllfeatRegister extends HTMLElement {
   }
 
   private handleRetry(): void {
-    this.state.screen = 'FORM';
     this.state.error = null;
     this.state.jobId = null;
     this.state.workId = null;
@@ -1244,6 +1263,22 @@ export class AllfeatRegister extends HTMLElement {
     this.state.uploadAttempt = 0;
     this.state.trackingStep = '';
     this.state.trackingProgress = 0;
+
+    if (this.mode === 'download') {
+      this.state.versionList = createDefaultVersionListState();
+      if (this.hasExternalUser) {
+        this.state.screen = 'DOWNLOADS';
+        this.loadUserWorks();
+      } else {
+        this.state.screen = 'FORM';
+        this.state.formSubStep = 'access_code';
+        this.state.formState.accessCode = '';
+      }
+      this.render();
+      return;
+    }
+
+    this.state.screen = 'FORM';
 
     if (this.mode === 'update') {
       if (this.hasExternalUser) {
@@ -1537,6 +1572,102 @@ export class AllfeatRegister extends HTMLElement {
   }
 
   /**
+   * Synthesize a `SelectedWork` from an `AccessWorkResponse` so the detail
+   * screen can reuse the existing renderer. The work-UUID `id` is left empty
+   * because the access-code surface never exposes it — every download call
+   * in this flow routes through the access code instead.
+   */
+  private accessWorkAsSelectedWork(result: AccessWorkResponse): SelectedWork {
+    return {
+      id: '',
+      atsId: result.ats_id ?? -1,
+      owner: result.owner_address,
+      latestVersion: result.latest_version,
+      latestCommitment: result.latest_commitment,
+      createdAt: result.created_at,
+      updatedAt: result.created_at,
+      title: result.title,
+      assetFilename: result.asset_filename,
+      hasFiles: !!result.asset_filename,
+      versions: [],
+    };
+  }
+
+  /**
+   * Derive the version list for the access-code detail screen. Prefers the
+   * embedded `versions` array when the backend provides it; otherwise falls
+   * back to a single synthetic row for the latest version so the user can
+   * at least grab the most recent asset and certificate.
+   */
+  private extractVersionsFromAccessWork(result: AccessWorkResponse, work: SelectedWork): WorkVersion[] {
+    if (result.versions?.length) {
+      const versions = result.versions
+        .map(v => this.mapWorkVersion(v))
+        .sort((a, b) => b.version - a.version);
+      const latest = versions.find(v => v.version === work.latestVersion);
+      if (latest && !latest.assetFilename) latest.assetFilename = work.assetFilename;
+      return versions;
+    }
+    if (work.latestVersion >= 1) {
+      return [{
+        version: work.latestVersion,
+        commitment: work.latestCommitment ?? '',
+        assetFilename: work.assetFilename,
+        registeredAt: work.createdAt,
+        registeredAtBlock: null,
+        mediaHash: null,
+        merkleRoot: null,
+        blockHash: null,
+        txHash: null,
+        feeCredits: null,
+        storageFeeCredits: null,
+        creators: [],
+      }];
+    }
+    return [];
+  }
+
+  private accessCreatorAsWorkCreator(c: AccessWorkCreator): WorkCreator {
+    return {
+      fullName: c.full_name,
+      email: c.email || null,
+      roles: c.roles,
+      ipi: c.ipi ?? null,
+      isni: c.isni ?? null,
+    };
+  }
+
+  /**
+   * Land the user on the DOWNLOAD_DETAIL screen for a single work resolved
+   * from an access code. Pre-populates the latest version's creators from
+   * the work response so the "Show creators" toggle resolves instantly for
+   * that row (older versions stay empty — the access surface has no
+   * per-version creators endpoint).
+   */
+  private openAccessCodeDetail(accessCode: string, result: AccessWorkResponse): void {
+    const work = this.accessWorkAsSelectedWork(result);
+    const versions = this.extractVersionsFromAccessWork(result, work);
+    const creatorsByVersion: Record<number, { status: 'loaded'; creators: WorkCreator[]; error: null }> = {};
+    if (result.creators?.length && work.latestVersion >= 1) {
+      creatorsByVersion[work.latestVersion] = {
+        status: 'loaded',
+        creators: result.creators.map(c => this.accessCreatorAsWorkCreator(c)),
+        error: null,
+      };
+    }
+    this.state.versionList = {
+      ...createDefaultVersionListState(),
+      work,
+      versions,
+      status: 'loaded',
+      accessCode,
+      creatorsByVersion,
+    };
+    this.state.screen = 'DOWNLOAD_DETAIL';
+    this.render();
+  }
+
+  /**
    * Convert the wire-format `WorkSummaryApi` row to the camelCase
    * `SelectedWork` used in state. The unified listing returns only summary
    * fields per work — the full version history and per-version creators
@@ -1749,10 +1880,22 @@ export class AllfeatRegister extends HTMLElement {
     }
   }
 
-  /** Navigate back to the DOWNLOADS list, preserving the cached list state. */
+  /**
+   * Navigate back from DOWNLOAD_DETAIL. For the user-scoped flow that means
+   * the cached list. For the refless access-code flow there is no list, so
+   * we drop back to the access-code prompt to look up another work.
+   */
   private backToDownloadList(): void {
+    const wasAccessCode = !!this.state.versionList.accessCode;
     this.state.versionList = createDefaultVersionListState();
-    this.state.screen = 'DOWNLOADS';
+    if (wasAccessCode) {
+      this.state.screen = 'FORM';
+      this.state.formSubStep = 'access_code';
+      this.state.formState.accessCode = '';
+      this.state.formErrors = {};
+    } else {
+      this.state.screen = 'DOWNLOADS';
+    }
     this.render();
   }
 
@@ -1762,11 +1905,12 @@ export class AllfeatRegister extends HTMLElement {
     if (this.state.versionList.downloading[version]) return;
     this.state.versionList.downloading = { ...this.state.versionList.downloading, [version]: 'asset' };
     this.render();
+    const accessCode = this.state.versionList.accessCode;
     dispatchDownloadStarted(this, { workId: work.id, kind: 'asset' });
     try {
-      const { url } = await downloadVersionAudio(
-        this.atsUrl, this.token, this.siteKey, work.id, version,
-      );
+      const { url } = accessCode
+        ? await downloadAccessVersionAudio(this.atsUrl, this.token, this.siteKey, accessCode, version)
+        : await downloadVersionAudio(this.atsUrl, this.token, this.siteKey, work.id, version);
       openPresignedDownload(url);
       dispatchDownloadComplete(this, { workId: work.id, kind: 'asset' });
     } catch (error) {
@@ -1952,6 +2096,20 @@ export class AllfeatRegister extends HTMLElement {
     const work = this.state.versionList.work;
     if (!work) return;
 
+    // Refless access-code sessions can't reach the unified
+    // `/v1/works/{ats_id}/.../creators` surface. The latest version is
+    // pre-populated from the access-code work response in
+    // `openAccessCodeDetail`; for any other version, settle the entry as
+    // empty without firing a request that would just 403.
+    if (this.state.versionList.accessCode && version !== work.latestVersion) {
+      this.state.versionList.creatorsByVersion = {
+        ...this.state.versionList.creatorsByVersion,
+        [version]: { status: 'loaded', creators: [], error: null },
+      };
+      this.render();
+      return;
+    }
+
     this.state.versionList.creatorsByVersion = {
       ...this.state.versionList.creatorsByVersion,
       [version]: { status: 'loading', creators: [], error: null },
@@ -1996,11 +2154,12 @@ export class AllfeatRegister extends HTMLElement {
     if (this.state.versionList.downloading[version]) return;
     this.state.versionList.downloading = { ...this.state.versionList.downloading, [version]: 'certificate' };
     this.render();
+    const accessCode = this.state.versionList.accessCode;
     dispatchDownloadStarted(this, { workId: work.id, kind: 'certificate' });
     try {
-      const { url } = await downloadVersionCertificate(
-        this.atsUrl, this.token, this.siteKey, work.id, version,
-      );
+      const { url } = accessCode
+        ? await downloadAccessVersionCertificate(this.atsUrl, this.token, this.siteKey, accessCode, version)
+        : await downloadVersionCertificate(this.atsUrl, this.token, this.siteKey, work.id, version);
       openPresignedDownload(url);
       dispatchDownloadComplete(this, { workId: work.id, kind: 'certificate' });
     } catch (error) {
