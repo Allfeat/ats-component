@@ -1,5 +1,29 @@
 # Changelog
 
+## [3.0.0](https://github.com/Allfeat/ats-component/compare/v2.0.1...v3.0.0) (2026-05-28)
+
+### ⚠ BREAKING CHANGES
+
+* collapse external-user flow onto unified /v1/works routes
+* removes the  attribute and adds a required
+   attribute for the external-user flows.
+
+### Features
+
+* add asset_filename to B2B works listing ([74c2bdc](https://github.com/Allfeat/ats-component/commit/74c2bdc328b13503ebfe8f99c04ca3a10af0151e))
+* add download flow via access code for refless sessions ([8e4a255](https://github.com/Allfeat/ats-component/commit/8e4a25520174b780fac10144dbf50394ec3390d1))
+* add download mode and user-scoped update flow (mock-backed) ([750a220](https://github.com/Allfeat/ats-component/commit/750a220e7bd2b352f23def0d91b0e140c4dbd92b))
+* collapse external-user flow onto unified /v1/works routes ([cff13f2](https://github.com/Allfeat/ats-component/commit/cff13f20775e8da75cf732da3c068f1217769c3a))
+* external-user flow talks to ATS directly with a session token ([1538e38](https://github.com/Allfeat/ats-component/commit/1538e383f7ec9602d872e08c4fbe9c0fed5309a9))
+* register works via the B2B proxy when external-user-id is set ([17b7495](https://github.com/Allfeat/ats-component/commit/17b74953215266e4def5a2faedf9301859934d87))
+
+### Bug Fixes
+
+* ats api url ([58779fd](https://github.com/Allfeat/ats-component/commit/58779fdea5dcfb194b7a8bb550bdc3d9d9e07f10))
+* auto-size creators-table code columns to keep IPI/ISNI on one line ([2dd7e45](https://github.com/Allfeat/ats-component/commit/2dd7e453f2248c83e8785ed81a67e915d00290a6))
+* **demo:** match Abbey Road copy, fonts and header/footer spacing ([2896567](https://github.com/Allfeat/ats-component/commit/2896567c8fd8ab6d1c5c377d0e2877b3ea73757e))
+* use updatedAt for the work detail summary date ([71a1c39](https://github.com/Allfeat/ats-component/commit/71a1c398c4c2599f2c3602c5f5f7e9dd3430e51a))
+
 ## [2.0.1](https://github.com/Allfeat/ats-component/compare/v2.0.0...v2.0.1) (2026-04-28)
 
 ### Bug Fixes
