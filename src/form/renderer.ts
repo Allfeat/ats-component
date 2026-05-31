@@ -1,9 +1,9 @@
 import type { AccessData, CreatorFormData, FormState, FormSubStep, SelectedWork, VersionCreatorsEntry, VersionListState, WorkCreator, WorkListState, WorkVersion } from './types';
 import { CREATOR_ROLES } from './types';
 import { getTrackingSteps } from '../api/types';
-import type { Mode } from '../api/types';
+import type { Mode, Network } from '../api/types';
 import { MAX_CREATORS, MAX_TITLE_LENGTH, ACCESS_CODE_LENGTH } from '../constants';
-import { formatFileSize, escapeHtml, formatShortDate, truncateHash } from '../utils/helpers';
+import { formatFileSize, escapeHtml, formatShortDate, truncateHash, assetsRetained } from '../utils/helpers';
 
 // ============================================
 // Lucide SVG Icons (inline, zero deps)
@@ -939,11 +939,19 @@ function renderWorkVersionCard(
   downloading: 'asset' | 'certificate' | null | undefined,
   creatorsExpanded: boolean,
   creatorsEntry: VersionCreatorsEntry | undefined,
+  assetsAvailable: boolean,
   hideCreatorsToggle = false,
 ): string {
   const inFlightAsset = downloading === 'asset';
   const inFlightCert = downloading === 'certificate';
-  const assetDisabled = !work.hasFiles;
+
+  // The original asset is only retained on mainnet (Allfeat). On testnet
+  // (Melodie) it's discarded after finalization, so the download is gated as a
+  // premium-only feature. On mainnet, fall back to the per-work file flag.
+  // Certificates stay downloadable on both networks.
+  const lockedForNetwork = !assetsAvailable;
+  const noFileOnMainnet = assetsAvailable && !work.hasFiles;
+  const assetDisabled = lockedForNetwork || noFileOnMainnet;
 
   const block = v.registeredAtBlock == null ? '—' : String(v.registeredAtBlock);
   // Match the dashboard's FileDownloadLink: the download control is labelled with the
@@ -951,6 +959,32 @@ function renderWorkVersionCard(
   const downloadLabel = inFlightAsset
     ? 'Preparing…'
     : (v.assetFilename && v.assetFilename.length > 0 ? v.assetFilename : 'Download file');
+
+  // Single hover hint for the asset button. A `disabled` button only honours its
+  // first `title`, so compute one string rather than stacking attributes.
+  const assetHint = lockedForNetwork
+    ? 'Asset download is only available for works on Allfeat (premium).'
+    : noFileOnMainnet
+      ? 'No asset file available for this work.'
+      : downloadLabel;
+
+  const assetButton = `<button type="button"
+                  class="ats-btn ats-btn-sm ats-btn-primary ats-download-file-btn"
+                  data-action="download-version-asset"
+                  data-version="${v.version}"
+                  ${assetDisabled ? '' : `title="${escapeHtml(assetHint)}"`}
+                  ${inFlightAsset || assetDisabled ? 'disabled' : ''}>
+            ${ICONS.download}
+            <span class="ats-download-file-name">${escapeHtml(downloadLabel)}</span>
+          </button>`;
+
+  // A disabled button swallows hover, so a native `title` never surfaces the
+  // reason. Wrap it so the still-hoverable wrapper drives a styled tooltip.
+  const assetControl = assetDisabled
+    ? `<span class="ats-tooltip-wrap" tabindex="0" aria-label="${escapeHtml(assetHint)}">${assetButton}
+            <span class="ats-tooltip" aria-hidden="true">${escapeHtml(assetHint)}</span>
+          </span>`
+    : assetButton;
 
   return `
     <div class="ats-version-card ${creatorsExpanded ? 'creators-expanded' : ''}">
@@ -960,16 +994,7 @@ function renderWorkVersionCard(
           <span class="ats-version-card-date">${formatShortDate(v.registeredAt)}</span>
         </div>
         <div class="ats-version-card-actions">
-          <button type="button"
-                  class="ats-btn ats-btn-sm ats-btn-primary ats-download-file-btn"
-                  data-action="download-version-asset"
-                  data-version="${v.version}"
-                  title="${escapeHtml(downloadLabel)}"
-                  ${inFlightAsset || assetDisabled ? 'disabled' : ''}
-                  ${assetDisabled ? 'title="No asset file available for this work"' : ''}>
-            ${ICONS.download}
-            <span class="ats-download-file-name">${escapeHtml(downloadLabel)}</span>
-          </button>
+          ${assetControl}
           <button type="button"
                   class="ats-btn ats-btn-sm ats-btn-outline-primary"
                   data-action="download-version-cert"
@@ -1005,8 +1030,9 @@ function renderWorkVersionCard(
   `;
 }
 
-export function renderDownloadDetailScreen(state: VersionListState): string {
+export function renderDownloadDetailScreen(state: VersionListState, network: Network): string {
   const work = state.work;
+  const assetsAvailable = assetsRetained(network);
   const isAccessCode = !!state.accessCode;
   // The access-code surface has no list to return to — every lookup is for
   // exactly one work — so the back action returns to the access-code prompt.
@@ -1056,6 +1082,7 @@ export function renderDownloadDetailScreen(state: VersionListState): string {
           state.downloading[v.version],
           state.creatorsExpanded[v.version] === true,
           state.creatorsByVersion[v.version],
+          assetsAvailable,
           // The access-code surface can only resolve creators for the
           // latest version (pre-populated from the work response). Older
           // versions have no available creators endpoint, so hide the

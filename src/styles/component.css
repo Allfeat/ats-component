@@ -1434,6 +1434,60 @@
   max-width: 200px;
 }
 
+/* Tooltip shown over a disabled control to explain why it's unavailable — used on
+   the asset-download button for testnet (Melodie) works, where the original file
+   isn't retained (downloads are an Allfeat / premium feature). A `disabled` button
+   emits no hover events, so the *wrapper* carries hover/focus while the button
+   gives up its pointer events. The bubble opens downward (over the card's own body)
+   because `.ats-version-list` clips overflow at the top. */
+.ats-tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+  cursor: not-allowed;
+}
+
+.ats-tooltip-wrap > .ats-btn:disabled {
+  pointer-events: none;
+}
+
+.ats-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: 220px;
+  padding: 7px 10px;
+  border-radius: var(--ats-radius);
+  background: var(--ats-text);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  box-shadow: var(--ats-shadow-lg);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--ats-transition), visibility var(--ats-transition);
+}
+
+/* Arrow pointing up at the button. */
+.ats-tooltip::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 18px;
+  border: 5px solid transparent;
+  border-bottom-color: var(--ats-text);
+}
+
+.ats-tooltip-wrap:hover .ats-tooltip,
+.ats-tooltip-wrap:focus-within .ats-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
 .ats-version-creators-chevron {
   display: inline-flex;
   align-items: center;

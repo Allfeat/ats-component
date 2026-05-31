@@ -135,4 +135,4 @@ export type {
 export { EVENT_NAMES } from './utils/events';
 
 // Utility helpers
-export { formatFileSize, escapeHtml, formatUtcDate, formatShortDate, truncateHash, openPresignedDownload } from './utils/helpers';
+export { formatFileSize, escapeHtml, formatUtcDate, formatShortDate, truncateHash, openPresignedDownload, assetsRetained } from './utils/helpers';

@@ -706,7 +706,7 @@ export class AllfeatRegister extends HTMLElement {
         content = renderDownloadListScreen(this.state.workList);
         break;
       case 'DOWNLOAD_DETAIL':
-        content = renderDownloadDetailScreen(this.state.versionList);
+        content = renderDownloadDetailScreen(this.state.versionList, this.network);
         break;
     }
 

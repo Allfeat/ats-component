@@ -71,6 +71,18 @@ export function truncateHash(hash: string | null | undefined, segmentLen = 10): 
 }
 
 /**
+ * Whether original asset/audio files are retained — and therefore downloadable —
+ * for works on the given network. Testnet (Melodie) no longer keeps the uploaded
+ * asset after finalization; only mainnet (Allfeat) does, where it's a premium
+ * feature. Certificates remain downloadable on both networks.
+ *
+ * Mirrors the backend gate `assets_retained(network) = (network == "mainnet")`.
+ */
+export function assetsRetained(network: string): boolean {
+  return network === 'mainnet';
+}
+
+/**
  * Opens a pre-signed URL in a new browser tab so the user can download the file.
  * Uses a transient `<a>` element rather than `window.open` so popup blockers
  * don't intercept it.
